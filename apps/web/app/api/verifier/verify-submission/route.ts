@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { ethers } from "ethers";
 import { prisma } from "@/lib/db";
 import { getVerifierWallet } from "@/lib/agents/verifierAgent";
 import { HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, KITE_RPC_URL } from "@/lib/contract";
+import { toJsonValue } from "@/lib/json";
 import { verifyReport } from "@/lib/verifier";
 
 export const runtime = "nodejs";
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     data: {
       status,
       verifierResult: result.passed,
-      verifierReport: result as unknown as Prisma.InputJsonValue,
+      verifierReport: toJsonValue(result),
       verificationHash: result.verificationHash,
       verificationTx: txHash
     }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { toJsonValue } from "@/lib/json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       agentAddress: body.agentAddress,
       stakeTx: body.stakeTxHash,
       reportHash: body.reportHash,
-      reportJson: body.reportJson as unknown as Prisma.InputJsonValue,
+      reportJson: toJsonValue(body.reportJson),
       status: "Submitted",
       settlementTx: body.submitTxHash
     }

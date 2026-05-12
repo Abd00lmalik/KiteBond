@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { ethers } from "ethers";
 import { prisma } from "@/lib/db";
 import { analyzeWithHeurist } from "@/lib/heurist";
 import { computeRiskLevel, computeRiskScore, computeRiskSignals } from "@/lib/heuristics";
+import { toJsonValue } from "@/lib/json";
 import { fetchNpmMeta } from "@/lib/npm";
 
 export const runtime = "nodejs";
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
         paymentTx: body.paymentTxHash ?? null,
         scanId: onchainScanId,
         reportHash,
-        reportJson: report as unknown as Prisma.InputJsonValue,
+        reportJson: toJsonValue(report),
         riskScore,
         riskLevel
       }
