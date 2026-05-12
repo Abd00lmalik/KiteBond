@@ -6,6 +6,10 @@ import { HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, KITE_RPC_URL } from "@/li
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type HuntSubmissionRow = {
+  id: string;
+};
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const { submissionId, walletAddress } = (await req.json()) as {
     submissionId?: string;
@@ -25,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: "Only hunt creator can select winner", code: "NOT_HUNT_CREATOR" }, { status: 403 });
   }
 
-  const submissionIndex = hunt.submissions.findIndex((submission) => submission.id === submissionId);
+  const submissionIndex = hunt.submissions.findIndex((submission: HuntSubmissionRow) => submission.id === submissionId);
   if (submissionIndex < 0) {
     return NextResponse.json({ error: "Submission not found", code: "SUBMISSION_NOT_FOUND" }, { status: 404 });
   }
