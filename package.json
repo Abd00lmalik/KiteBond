@@ -18,6 +18,6 @@
     "agent:submit": "ts-node scripts/agent/stake-and-submit.ts"
   },
   "engines": {
-    "node": ">=18.18.0"
+    "node": "20.x"
   }
 }
