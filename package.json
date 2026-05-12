@@ -1,0 +1,23 @@
+{
+  "name": "kitebond",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KiteBond - npm supply-chain security and bonded agent settlement on KiteAI.",
+  "workspaces": [
+    "apps/web",
+    "contracts"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web",
+    "lint": "npm run lint -w apps/web",
+    "compile": "npm run compile -w contracts",
+    "test": "npm run test -w contracts",
+    "agent:hunts": "ts-node scripts/agent/read-open-hunts.ts",
+    "agent:create-test-hunt": "ts-node scripts/agent/create-test-hunt.ts",
+    "agent:submit": "ts-node scripts/agent/stake-and-submit.ts"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

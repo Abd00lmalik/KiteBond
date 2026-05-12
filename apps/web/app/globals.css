@@ -1,0 +1,260 @@
+@import "@rainbow-me/rainbowkit/styles.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Base surfaces */
+  --bg-void:          #03030a;
+  --bg-base:          #05050f;
+  --bg-surface:       #080812;
+  --bg-card:          #0c0c1a;
+  --bg-card-hover:    #10101f;
+  --bg-glass:         rgba(255, 255, 255, 0.025);
+  --bg-glass-bright:  rgba(255, 255, 255, 0.05);
+
+  /* Borders */
+  --border-void:      rgba(255, 255, 255, 0.04);
+  --border-dim:       rgba(255, 255, 255, 0.07);
+  --border-default:   rgba(255, 255, 255, 0.10);
+  --border-bright:    rgba(255, 255, 255, 0.18);
+  --border-orange:    rgba(251, 146, 60, 0.30);
+  --border-green:     rgba(34, 197, 94, 0.28);
+  --border-red:       rgba(239, 68, 68, 0.28);
+  --border-amber:     rgba(245, 158, 11, 0.28);
+
+  /* Brand */
+  --orange:           #fb923c;
+  --orange-bright:    #f97316;
+  --orange-dim:       rgba(251, 146, 60, 0.12);
+  --orange-glow:      rgba(251, 146, 60, 0.08);
+
+  /* Semantic */
+  --green:            #22c55e;
+  --green-dim:        rgba(34, 197, 94, 0.09);
+  --red:              #ef4444;
+  --red-dim:          rgba(239, 68, 68, 0.09);
+  --amber:            #f59e0b;
+  --amber-dim:        rgba(245, 158, 11, 0.09);
+  --blue:             #60a5fa;
+  --blue-dim:         rgba(96, 165, 250, 0.09);
+
+  /* Typography */
+  --text-primary:     #f1f1f5;
+  --text-secondary:   #9898b0;
+  --text-muted:       #52526a;
+  --text-orange:      #fb923c;
+  --text-green:       #22c55e;
+  --text-red:         #ef4444;
+  --text-amber:       #f59e0b;
+
+  /* Layout */
+  --radius-sm:        6px;
+  --radius-md:        10px;
+  --radius-lg:        14px;
+  --radius-xl:        20px;
+
+  /* Shadows */
+  --shadow-sm:        0 1px 2px rgba(0,0,0,0.5);
+  --shadow-md:        0 2px 8px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-orange:    0 0 30px rgba(251,146,60,0.10), 0 0 60px rgba(251,146,60,0.05);
+  --shadow-green:     0 0 30px rgba(34,197,94,0.10), 0 0 60px rgba(34,197,94,0.04);
+  --shadow-red:       0 0 30px rgba(239,68,68,0.10);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100vh;
+  margin: 0;
+  background-color: var(--bg-base);
+  background-image:
+    radial-gradient(ellipse 100% 60% at 50% -5%, rgba(251, 146, 60, 0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 85% 50%, rgba(251, 146, 60, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 40% 30% at 15% 80%, rgba(34, 197, 94, 0.03) 0%, transparent 50%);
+  color: var(--text-primary);
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  scroll-behavior: smooth;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display, "Syne", sans-serif);
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: clamp(2.8rem, 6.8vw, 5.8rem);
+  font-weight: 800;
+  line-height: 0.98;
+}
+
+h2 {
+  font-size: clamp(1.9rem, 4vw, 3.25rem);
+  font-weight: 800;
+  line-height: 1.08;
+}
+
+h3 {
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+p {
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+.mono,
+code,
+.hash,
+.address,
+.package-name {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+}
+
+.label-sm,
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.70rem;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.label-orange {
+  color: var(--text-orange);
+}
+
+::selection {
+  background: rgba(251, 146, 60, 0.35);
+}
+
+.section {
+  position: relative;
+  padding-top: 104px;
+  padding-bottom: 104px;
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.card--orange {
+  border-color: var(--border-orange);
+  box-shadow: var(--shadow-md), var(--shadow-orange);
+}
+
+.card--green {
+  border-color: var(--border-green);
+  box-shadow: var(--shadow-md), var(--shadow-green);
+}
+
+.card--red {
+  border-color: var(--border-red);
+  box-shadow: var(--shadow-md), var(--shadow-red);
+}
+
+.card--amber {
+  border-color: var(--border-amber);
+}
+
+.focus-ring {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.focus-ring:focus-visible {
+  outline-color: var(--orange);
+}
+
+.status-pulse {
+  animation: pulse-orange 2s ease-in-out infinite;
+}
+
+@keyframes pulse-orange {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,146,60,0.4); }
+  50% { box-shadow: 0 0 0 7px rgba(251,146,60,0); }
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.4; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+.scan-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(251,146,60,0.25) 20%, rgba(251,146,60,0.60) 50%, rgba(251,146,60,0.25) 80%, transparent 100%);
+  animation: scan-line 8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes glow-drift {
+  0%, 100% { transform: translate3d(0, -12px, 0); }
+  50% { transform: translate3d(18px, 18px, 0); }
+}
+
+.glow-drift {
+  animation: glow-drift 20s ease-in-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-glass) 0%, var(--bg-glass-bright) 45%, var(--bg-glass) 100%);
+  background-size: 180% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding-top: 72px;
+    padding-bottom: 72px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

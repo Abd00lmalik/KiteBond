@@ -1,0 +1,18 @@
+{
+  "name": "@kitebond/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:kite": "hardhat run scripts/deploy.ts --network kiteTestnet",
+    "deploy:test-token:kite": "hardhat run scripts/deployTestToken.ts --network kiteTestnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.19",
+    "typescript": "^5.4.5"
+  }
+}

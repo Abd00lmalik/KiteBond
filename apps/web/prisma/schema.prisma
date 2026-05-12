@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserUsage {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique
+  freeScanUsed  Boolean  @default(false)
+  scanCount     Int      @default(0)
+  huntCount     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model InstantScan {
+  id          String   @id @default(cuid())
+  userAddress String
+  packageName String
+  version     String
+  scanDepth   String
+  paid        Boolean  @default(false)
+  amountPaid  String?
+  paymentTx   String?
+  proofTx     String?
+  scanId      String   @unique
+  reportHash  String?
+  reportJson  Json?
+  riskScore   Int?
+  riskLevel   String?
+  createdAt   DateTime @default(now())
+}
+
+model Hunt {
+  id             String       @id @default(cuid())
+  chainHuntId    Int?         @unique
+  creatorAddress String
+  packageName    String
+  version        String
+  scanDepth      String
+  rewardAmount   String
+  stakeRequired  String
+  deadline       DateTime
+  status         String       @default("Open")
+  termsHash      String?
+  metadataHash   String?
+  createdTx      String?
+  winnerAddress  String?
+  settlementTx   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  submissions    Submission[]
+}
+
+model Submission {
+  id               String   @id @default(cuid())
+  huntId           String
+  hunt             Hunt     @relation(fields: [huntId], references: [id])
+  agentAddress     String
+  stakeTx          String?
+  reportHash       String?
+  reportJson       Json?
+  status           String   @default("Submitted")
+  verifierResult   Boolean?
+  verifierReport   Json?
+  verificationHash String?
+  verificationTx   String?
+  settlementTx     String?
+  submittedAt      DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ChainEvent {
+  id              String   @id @default(cuid())
+  chainId         Int
+  contractAddress String
+  eventName       String
+  txHash          String
+  blockNumber     BigInt
+  payloadJson     Json
+  createdAt       DateTime @default(now())
+}
+
+model AgentProfile {
+  address        String   @id
+  totalSubmitted Int      @default(0)
+  totalValid     Int      @default(0)
+  totalInvalid   Int      @default(0)
+  totalWon       Int      @default(0)
+  totalEarned    String   @default("0")
+  totalSlashed   String   @default("0")
+  updatedAt      DateTime @updatedAt
+}

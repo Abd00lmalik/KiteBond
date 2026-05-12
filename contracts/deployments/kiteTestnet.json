@@ -1,0 +1,12 @@
+{
+  "scanPayments": "0x4accACb834b16CC64ecf7326cFc09F9f21E8646C",
+  "huntRegistry": "0xe8544c3d4d2bd162903343D8ff4e71D45785689A",
+  "paymentToken": "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63",
+  "treasury": "0x7e0Af9e55184b2b4bd5bac455493c035d51eee3E",
+  "verifier": "0x7e0Af9e55184b2b4bd5bac455493c035d51eee3E",
+  "deployer": "0x7e0Af9e55184b2b4bd5bac455493c035d51eee3E",
+  "chainId": 2368,
+  "network": "kiteTestnet",
+  "deployedAt": "2026-05-10T02:01:02.420Z",
+  "explorerBase": "https://testnet.kitescan.ai"
+}
