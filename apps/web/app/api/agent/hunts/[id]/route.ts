@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Submission } from "@prisma/client";
 import { parseUnits } from "viem";
 import { prisma } from "@/lib/db";
 
@@ -23,7 +24,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
       deadline: hunt.deadline.toISOString(),
       createdAt: hunt.createdAt.toISOString(),
       updatedAt: hunt.updatedAt.toISOString(),
-      submissions: hunt.submissions.map((submission) => ({
+      submissions: hunt.submissions.map((submission: Submission) => ({
         ...submission,
         submittedAt: submission.submittedAt.toISOString(),
         updatedAt: submission.updatedAt.toISOString()
