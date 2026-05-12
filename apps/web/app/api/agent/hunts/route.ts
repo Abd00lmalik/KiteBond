@@ -5,6 +5,18 @@ import { prisma } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type AgentHuntRow = {
+  id: string;
+  chainHuntId: number | null;
+  packageName: string;
+  version: string;
+  rewardAmount: string;
+  stakeRequired: string;
+  deadline: Date;
+  submissions: unknown[];
+  status: string;
+};
+
 export async function GET(req: NextRequest) {
   const status = req.nextUrl.searchParams.get("status") || "Open";
   const hunts = await prisma.hunt.findMany({
@@ -14,7 +26,7 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    data: hunts.map((hunt) => ({
+    data: hunts.map((hunt: AgentHuntRow) => ({
       id: hunt.id,
       chainHuntId: hunt.chainHuntId,
       packageName: hunt.packageName,
