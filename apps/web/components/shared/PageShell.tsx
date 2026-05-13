@@ -12,7 +12,7 @@ export function PageShell({ children }: { children: ReactNode }) {
     <AnimatePresence mode="wait">
       <motion.div
         key={pathname}
-        initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         exit={reducedMotion ? undefined : { opacity: 0, y: -6 }}
         transition={{ duration: 0.18, ease: "easeOut" }}

@@ -190,27 +190,42 @@ export async function analyzeWithHeurist(
   }
 
   async function attempt(): Promise<HeuristAnalysis> {
-    const res = await fetch(`${HEURIST_BASE}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.HEURIST_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: HEURIST_MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: buildUserPrompt(meta, existingSignals, scanDepth) }
-        ],
-        max_tokens: 1800,
-        temperature: 0.1
-      }),
-      signal: AbortSignal.timeout(30_000)
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25_000);
+    let res: Response;
+    try {
+      res = await fetch(`${HEURIST_BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.HEURIST_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: HEURIST_MODEL,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: buildUserPrompt(meta, existingSignals, scanDepth) }
+          ],
+          max_tokens: 1800,
+          temperature: 0.1
+        }),
+        signal: controller.signal
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error("Heurist analysis timed out after 25 seconds.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!res.ok) throw new Error(`Heurist API error: ${res.status} ${res.statusText}`);
 
-    const data = (await res.json()) as {
+    const raw = await res.text();
+    if (!raw.trim()) throw new Error("Empty response from Heurist");
+
+    const data = JSON.parse(raw) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
     const text = data.choices?.[0]?.message?.content?.trim();

@@ -19,8 +19,8 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex min-h-[calc(100vh-52px)] w-16 shrink-0 flex-col border-r border-[var(--border-dim)] bg-[var(--bg-surface)] p-2 md:w-[240px] md:p-4">
-      <Link href="/" className="mb-8 flex items-center justify-center gap-2 font-syne text-xl font-extrabold md:justify-start">
+    <div className="flex h-full w-16 shrink-0 flex-col border-r border-[var(--border-dim)] bg-[var(--bg-surface)] p-2 md:w-[240px] md:p-4">
+      <Link href="/" className="mb-8 flex items-center justify-center gap-2 text-xl font-semibold md:justify-start">
         <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] text-[var(--orange)]">
           <Rocket className="h-4 w-4" aria-hidden="true" />
         </span>
@@ -49,6 +49,6 @@ export function Sidebar() {
       <div className="mt-auto hidden md:block">
         <WalletPanel />
       </div>
-    </aside>
+    </div>
   );
 }

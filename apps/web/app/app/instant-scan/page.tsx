@@ -1,20 +1,21 @@
 "use client";
 
-import { useMemo, useReducer, useState } from "react";
+import { useReducer, useState } from "react";
 import CountUp from "react-countup";
 import Link from "next/link";
 import { ArrowRight, Copy, Loader2, ReceiptText, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
+import { CompactScanStatus } from "@/components/app/CompactScanStatus";
 import { PageHeader } from "@/components/app/PageHeader";
-import { ScanPipeline } from "@/components/app/ScanPipeline";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
 import { TxLink } from "@/components/shared/TxLink";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useApproveToken, useAuthorizeScan, useRecordScanReceipt } from "@/hooks/useKiteBond";
 import { SCAN_PAYMENTS_ADDRESS } from "@/lib/contract";
+import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { initialScanState, isScanBusy, scanReducer, type ScanDepth, type ScanReport } from "@/lib/scanStateMachine";
 import type { Severity } from "@/lib/heuristics";
 import { useAccount } from "wagmi";
@@ -62,12 +63,9 @@ export default function InstantScanPage() {
       }
     : null;
 
-  const paymentCopy = useMemo(() => {
-    if (context.isFree) return "This scan does not require a USDT payment.";
-    return `Approve ${context.price} USDT, then authorize the scan on Kite.`;
-  }, [context.isFree, context.price]);
-
   async function runScan() {
+    if (busy) return;
+
     const pkg = packageName.trim();
     const resolvedVersion = version.trim() || "latest";
 
@@ -121,7 +119,7 @@ export default function InstantScanPage() {
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
-      const scanPromise = fetch("/api/scan/instant", {
+      const scanPromise = safeFetch<{ data?: ScanResult; error?: string }>("/api/scan/instant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -141,10 +139,9 @@ export default function InstantScanPage() {
       await sleep(450);
       dispatch({ type: "SIGNALS_COMPUTED" });
 
-      const res = await scanPromise;
-      const json = (await res.json()) as { data?: ScanResult; error?: string };
-      if (!res.ok || !json.data) {
-        throw new Error(json.error || "Scan failed");
+      const json = await scanPromise;
+      if (!json.data) {
+        throw new Error(json.error || "Scan failed.");
       }
 
       dispatch({ type: "HEURIST_COMPLETE", payload: { partial: json.data.report } });
@@ -160,7 +157,7 @@ export default function InstantScanPage() {
       });
       toast.success("Package scan complete.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Scan failed.";
+      const message = getErrorMessage(error);
       dispatch({ type: "ERROR", payload: { error: message } });
       toast.error(message);
     }
@@ -171,7 +168,7 @@ export default function InstantScanPage() {
     try {
       dispatch({ type: "RECORDING_RECEIPT" });
       const txHash = await recordReceipt({ scanId: context.onchainScanId, reportHash: context.reportHash });
-      await fetch("/api/scan/anchor-proof", {
+      await safeFetch<{ success?: boolean }>("/api/scan/anchor-proof", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scanId: context.scanId, reportHash: context.reportHash, txHash })
@@ -179,7 +176,7 @@ export default function InstantScanPage() {
       dispatch({ type: "RECEIPT_RECORDED", payload: { txHash } });
       toast.success("Scan receipt recorded.");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Receipt transaction failed.";
+      const message = getErrorMessage(error);
       dispatch({ type: "ERROR", payload: { error: message } });
       toast.error(message);
     }
@@ -260,11 +257,7 @@ export default function InstantScanPage() {
               {busy ? "Scan in progress" : "Run Scan"}
             </button>
 
-            {context.state !== "idle" && (
-              <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4 text-sm text-[var(--text-secondary)]">
-                <span className="text-[var(--text-primary)]">Current step:</span> {context.state.replace(/_/g, " ")}. {paymentCopy}
-              </div>
-            )}
+            <CompactScanStatus state={context.state} error={context.error} isFree={context.isFree} />
           </Card>
 
           <Card className="p-5">
@@ -285,15 +278,6 @@ export default function InstantScanPage() {
             </div>
           </Card>
 
-          <ScanPipeline
-            currentState={context.state}
-            isFree={context.isFree}
-            paymentTxHash={context.paymentTxHash}
-            authTxHash={context.authTxHash}
-            receiptTxHash={context.receiptTxHash}
-            error={context.error}
-            failedState={context.failedState}
-          />
         </div>
 
         <div className="space-y-5">
@@ -407,4 +391,19 @@ export default function InstantScanPage() {
       </div>
     </AppShell>
   );
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 0) return "Network error. Check your connection.";
+    if (err.status === 402) return "Payment required. Approve USDT to continue.";
+    if (err.status === 404) return "Package not found on npm registry.";
+    if (err.status === 408 || err.message.toLowerCase().includes("timed out")) {
+      return "Analysis timed out. Try again or use Quick Scan.";
+    }
+    if (err.status >= 500) return `Server error. ${err.message}`;
+    return err.message;
+  }
+
+  return err instanceof Error ? err.message : "Unknown error. Try again.";
 }

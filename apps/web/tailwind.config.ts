@@ -10,8 +10,9 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ["var(--font-syne)", "Syne", "sans-serif"],
-        syne: ["var(--font-syne)", "Syne", "sans-serif"],
+        sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "Space Grotesk", "sans-serif"],
+        syne: ["var(--font-display)", "Space Grotesk", "sans-serif"],
         mono: ["var(--font-mono)", "IBM Plex Mono", "monospace"],
         code: ["JetBrains Mono", "var(--font-mono)", "monospace"]
       },

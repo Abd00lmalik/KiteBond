@@ -21,9 +21,9 @@ export function TopBar() {
     "overview";
 
   return (
-    <header className="sticky top-0 z-40 h-[52px] border-b border-[var(--border-dim)] bg-[var(--bg-surface)] px-4 backdrop-blur-md lg:px-6">
+    <header className="z-40 h-[52px] shrink-0 border-b border-[var(--border-dim)] bg-[var(--bg-surface)] px-4 backdrop-blur-md lg:px-6">
       <div className="grid h-full grid-cols-[1fr_auto_1fr] items-center gap-4">
-        <div className="flex min-w-0 items-center gap-2 font-syne font-bold capitalize">
+        <div className="flex min-w-0 items-center gap-2 font-semibold capitalize">
           <Rocket className="h-4 w-4 text-[var(--orange)]" aria-hidden="true" />
           <span className="truncate">KiteBond / {section}</span>
         </div>

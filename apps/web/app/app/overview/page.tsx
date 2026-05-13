@@ -94,7 +94,7 @@ export default function OverviewPage() {
     <AppShell>
       <PageHeader
         label="PROTOCOL OVERVIEW"
-        title="KiteBond Dashboard"
+        title="Protocol Overview"
         description="Live scan, hunt, wallet, and contract state for npm package security workflows."
       />
 

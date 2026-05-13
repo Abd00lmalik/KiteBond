@@ -8,50 +8,51 @@ import { fetchNpmMeta } from "@/lib/npm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 type ScanDepth = "quick" | "standard" | "deep";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as {
-    packageName?: string;
-    version?: string;
-    scanDepth?: ScanDepth;
-    walletAddress?: string;
-    paymentTxHash?: string;
-    onchainScanId?: string;
-    isAgentSubmission?: boolean;
-  };
-
-  const packageName = body.packageName?.trim();
-  const version = body.version?.trim() || "latest";
-  const scanDepth = body.scanDepth || "quick";
-  const walletAddress = body.walletAddress;
-  const isAgentSubmission = body.isAgentSubmission === true;
-
-  if (!packageName || !walletAddress) {
-    return NextResponse.json({ error: "packageName and walletAddress required", code: "SCAN_INPUT_REQUIRED" }, { status: 400 });
-  }
-
-  const usage =
-    (await prisma.userUsage.findUnique({ where: { walletAddress } })) ||
-    (await prisma.userUsage.create({ data: { walletAddress } }));
-
-  const price = getScanPrice(scanDepth);
-  const isFreeQuick = scanDepth === "quick" && !usage.freeScanUsed;
-  const paymentRequired = Number(price) > 0 && !isAgentSubmission;
-
-  if (paymentRequired && !body.paymentTxHash) {
-    return NextResponse.json(
-      { error: "Payment required. Provide paymentTxHash after on-chain authorization.", code: "PAYMENT_REQUIRED" },
-      { status: 402 }
-    );
-  }
-
-  const onchainScanId =
-    body.onchainScanId ||
-    ethers.keccak256(ethers.toUtf8Bytes(`${walletAddress}:${packageName}:${version}:${Date.now()}`));
-
   try {
+    const body = (await req.json()) as {
+      packageName?: string;
+      version?: string;
+      scanDepth?: ScanDepth;
+      walletAddress?: string;
+      paymentTxHash?: string;
+      onchainScanId?: string;
+      isAgentSubmission?: boolean;
+    };
+
+    const packageName = body.packageName?.trim();
+    const version = body.version?.trim() || "latest";
+    const scanDepth = body.scanDepth || "quick";
+    const walletAddress = body.walletAddress;
+    const isAgentSubmission = body.isAgentSubmission === true;
+
+    if (!packageName || !walletAddress) {
+      return NextResponse.json({ error: "packageName and walletAddress required", code: "SCAN_INPUT_REQUIRED" }, { status: 400 });
+    }
+
+    const usage =
+      (await prisma.userUsage.findUnique({ where: { walletAddress } })) ||
+      (await prisma.userUsage.create({ data: { walletAddress } }));
+
+    const price = getScanPrice(scanDepth);
+    const isFreeQuick = scanDepth === "quick" && !usage.freeScanUsed;
+    const paymentRequired = Number(price) > 0 && !isAgentSubmission;
+
+    if (paymentRequired && !body.paymentTxHash) {
+      return NextResponse.json(
+        { error: "Payment required. Provide paymentTxHash after on-chain authorization.", code: "PAYMENT_REQUIRED" },
+        { status: 402 }
+      );
+    }
+
+    const onchainScanId =
+      body.onchainScanId ||
+      ethers.keccak256(ethers.toUtf8Bytes(`${walletAddress}:${packageName}:${version}:${Date.now()}`));
+
     const meta = await fetchNpmMeta(packageName, version);
     const deterministicSignals = computeRiskSignals(meta);
 
@@ -140,6 +141,7 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (err) {
+    console.error("[/api/scan/instant] Unhandled error:", err instanceof Error ? err.message : err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Scan failed", code: "SCAN_FAILED" },
       { status: 500 }
