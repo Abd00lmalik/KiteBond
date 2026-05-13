@@ -79,6 +79,7 @@ export default function AgentHuntPage() {
   const [investigationFocus, setInvestigationFocus] = useState("");
   const [meta, setMeta] = useState<PackageMeta | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
+  const [txWarning, setTxWarning] = useState<string | null>(null);
   const preflight = useHuntPreflight({ rewardAmount, stakeAmount: stakeRequired });
   const missingContracts = getMissingContractConfig();
   const huntSpender = (() => {
@@ -127,18 +128,23 @@ export default function AgentHuntPage() {
   }, [packageName, version]);
 
   async function submitHunt() {
+    setTxWarning(null);
     if (!isConnected || !address || !preflight.walletConnected) {
+      setTxWarning("Connect your wallet before creating a hunt.");
       toast.error("Connect your wallet before creating a hunt.");
       return;
     }
 
     if (!preflight.correctNetwork) {
+      setTxWarning("Switch to KiteAI Testnet before creating a hunt.");
       toast.error("Switch to KiteAI Testnet before creating a hunt.");
       return;
     }
 
     if (!preflight.contractsConfigured) {
-      toast.error(`Contracts not configured: ${missingContracts.join(", ") || "missing deployment env"}`);
+      const message = `Contracts not configured: ${missingContracts.join(", ") || "missing deployment env"}`;
+      setTxWarning(message);
+      toast.error(message);
       return;
     }
 
@@ -149,16 +155,20 @@ export default function AgentHuntPage() {
       deadlineDuration: deadlineSeconds
     });
     if (validationError) {
+      setTxWarning(validationError);
       toast.error(validationError);
       return;
     }
 
     if (!preflight.hasEnoughUsdtForReward) {
-      toast.error(`Insufficient USDT. Need ${rewardAmount}, have ${preflight.formattedUsdtBalance}.`);
+      const message = `Insufficient USDT. Need ${rewardAmount}, have ${preflight.formattedUsdtBalance}.`;
+      setTxWarning(message);
+      toast.error(message);
       return;
     }
 
     if (!preflight.hasKiteForGas) {
+      setTxWarning("Low KITE balance for gas. Fund from the Kite faucet.");
       toast.error("Low KITE balance for gas. Fund from the Kite faucet.");
       return;
     }
@@ -207,7 +217,9 @@ export default function AgentHuntPage() {
       toast.success("Hunt created on Kite.");
       router.push(`/app/hunts/${json.data.id}`);
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt creation failed.");
+      const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt creation failed.";
+      setTxWarning(message);
+      toast.error(message);
     }
   }
 
@@ -307,6 +319,12 @@ export default function AgentHuntPage() {
                 {huntSpender.slice(0, 8)}...{huntSpender.slice(-6)}
               </a>
             </p>
+          )}
+
+          {txWarning && (
+            <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] p-4 text-sm text-[var(--cyber-yellow)]">
+              {txWarning}
+            </div>
           )}
 
           <div className="mt-6 grid gap-4 md:grid-cols-2">

@@ -18,24 +18,27 @@ type BadgeTone =
   | "winner";
 
 const tones: Record<BadgeTone, string> = {
-  safe: "border-[var(--border-green)] bg-[var(--green-dim)] text-[var(--text-green)]",
-  low: "border-[var(--border-green)] bg-[var(--green-dim)] text-[var(--text-green)]",
-  medium: "border-[var(--border-amber)] bg-[var(--amber-dim)] text-[var(--text-amber)]",
-  warning: "border-[var(--border-amber)] bg-[var(--amber-dim)] text-[var(--text-amber)]",
-  high: "border-[var(--border-orange)] bg-[var(--orange-dim)] text-[var(--text-orange)]",
-  suspicious: "border-[var(--border-orange)] bg-[var(--orange-dim)] text-[var(--text-orange)]",
-  critical: "border-[var(--border-red)] bg-[var(--red-dim)] text-[var(--text-red)]",
-  dangerous: "border-[var(--border-red)] bg-[var(--red-dim)] text-[var(--text-red)]",
-  verified: "border-[var(--border-green)] bg-[var(--green)] text-white",
-  invalid: "border-[var(--border-red)] bg-[var(--red)] text-white",
-  pending: "border-[var(--border-dim)] bg-[var(--bg-glass)] text-[var(--text-muted)]",
-  slashed: "border-[var(--border-red)] bg-[var(--red-dim)] font-bold text-[var(--text-red)]",
-  winner: "border-[var(--border-orange)] bg-[var(--orange)] text-black"
+  safe: "border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] text-[var(--cyber-green)]",
+  low: "border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] text-[var(--cyber-green)]",
+  medium: "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]",
+  warning: "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]",
+  high: "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]",
+  suspicious: "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]",
+  critical: "border-[var(--cyber-red)] bg-[rgba(255,45,85,0.09)] text-[var(--cyber-red)]",
+  dangerous: "border-[var(--cyber-red)] bg-[rgba(255,45,85,0.09)] text-[var(--cyber-red)]",
+  verified: "border-[var(--cyber-blue)] bg-[var(--cyber-blue-ghost)] text-[var(--cyber-blue)]",
+  invalid: "border-[var(--cyber-red)] bg-[rgba(255,45,85,0.09)] text-[var(--cyber-red)]",
+  pending: "border-[var(--border-subtle)] bg-[var(--surface-1)] text-[var(--text-secondary)]",
+  slashed: "border-[var(--cyber-red)] bg-[rgba(255,45,85,0.09)] font-bold text-[var(--cyber-red)]",
+  winner: "border-[var(--cyber-green)] bg-[var(--cyber-green)] text-[#030712]"
 };
 
 const aliasTones: Record<string, BadgeTone> = {
   open: "pending",
   inprogress: "high",
+  in_progress: "high",
+  completed: "verified",
+  failed: "invalid",
   verifiedvalid: "verified",
   verifiedinvalid: "invalid",
   winner: "winner",

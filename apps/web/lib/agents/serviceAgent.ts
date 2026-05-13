@@ -2,7 +2,7 @@ import { ethers } from "ethers";
 import { KITE_RPC_URL } from "@/lib/contract";
 
 export function getVerifierProvider() {
-  return new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_KITE_RPC_URL || KITE_RPC_URL);
+  return new ethers.JsonRpcProvider(KITE_RPC_URL);
 }
 
 export function getVerifierWallet(provider = getVerifierProvider()): ethers.Wallet {

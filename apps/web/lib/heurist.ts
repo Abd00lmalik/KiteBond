@@ -303,3 +303,41 @@ export async function analyzeWithHeurist(
     }
   }
 }
+
+export function buildFallbackAnalysis(
+  meta: NpmPackageMeta,
+  existingSignals: RiskSignal[],
+  reason: string
+): HeuristAnalysis {
+  const riskScore = existingSignals.length > 0
+    ? Math.min(85, Math.max(35, existingSignals.reduce((score, signal) => {
+        const weight = signal.severity === "critical" ? 35 : signal.severity === "high" ? 25 : signal.severity === "medium" ? 15 : 8;
+        return score + weight;
+      }, 10)))
+    : 12;
+  const riskLevel: Severity = riskScore >= 70 ? "critical" : riskScore >= 45 ? "high" : riskScore >= 20 ? "medium" : "low";
+  const finalRecommendation =
+    riskScore > 60 ? "avoid_until_manual_review" : riskScore >= 30 ? "use_with_caution" : "safe_to_review";
+
+  return {
+    packageName: meta.name,
+    version: meta.version,
+    riskScore,
+    riskLevel,
+    summary: `${meta.name}@${meta.version} was analyzed from npm registry metadata with ${meta.dependencyCount} direct dependencies and repository ${meta.repository || "not provided"}. Heurist analysis was unavailable, so KiteBond returned a deterministic fallback based on concrete metadata and scanner signals.`,
+    signals: existingSignals,
+    finalRecommendation,
+    confidence: existingSignals.length > 0 ? 0.58 : 0.52,
+    limitations: [
+      `Heurist unavailable: ${reason}`,
+      "Fallback analysis uses registry metadata and deterministic signals only."
+    ],
+    methodology: "Deterministic fallback analysis from npm metadata and local risk signals",
+    metadata: {
+      repository: meta.repository,
+      license: meta.license,
+      dependencyCount: meta.dependencyCount,
+      hasInstallScripts: meta.hasInstallScript
+    }
+  };
+}

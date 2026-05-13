@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { ScanPaymentsEthersABI } from "@/lib/contract";
+import { CONTRACT_CONFIG } from "@/lib/contractConfig";
 import { prisma } from "@/lib/db";
-import { analyzeWithHeurist } from "@/lib/heurist";
+import { analyzeWithHeurist, buildFallbackAnalysis } from "@/lib/heurist";
 import { computeRiskLevel, computeRiskScore, computeRiskSignals } from "@/lib/heuristics";
 import { toJsonValue } from "@/lib/json";
 import { fetchNpmMeta } from "@/lib/npm";
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
       (await prisma.userUsage.create({ data: { walletAddress } }));
 
     const price = getScanPrice(scanDepth);
-    const isFreeQuick = scanDepth === "quick" && !usage.freeScanUsed;
+    const isFreeQuick = scanDepth === "quick" && usage.freeScansUsed < 1;
     const paymentRequired = Number(price) > 0 && !isAgentSubmission;
 
     if (paymentRequired && !body.paymentTxHash) {
@@ -61,19 +63,10 @@ export async function POST(req: NextRequest) {
       heuristResult = await analyzeWithHeurist(meta, deterministicSignals, scanDepth);
     } catch (error) {
       console.error("[Scan] Heurist failed:", error);
-      return NextResponse.json(
-        {
-          error: error instanceof Error ? error.message : "Heurist analysis failed.",
-          code: "HEURIST_FAILED",
-          staticAnalysis: {
-            packageName: meta.name,
-            version: meta.version,
-            signals: deterministicSignals,
-            riskScore: computeRiskScore(deterministicSignals),
-            riskLevel: computeRiskLevel(computeRiskScore(deterministicSignals))
-          }
-        },
-        { status: 502 }
+      heuristResult = buildFallbackAnalysis(
+        meta,
+        deterministicSignals,
+        error instanceof Error ? error.message : "unknown Heurist failure"
       );
     }
 
@@ -103,6 +96,7 @@ export async function POST(req: NextRequest) {
     };
 
     const reportHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(report)));
+    const anchor = await anchorScanProof(onchainScanId, reportHash);
     const scan = await prisma.instantScan.create({
       data: {
         userAddress: walletAddress,
@@ -112,6 +106,7 @@ export async function POST(req: NextRequest) {
         paid: paymentRequired,
         amountPaid: paymentRequired ? price : "0",
         paymentTx: body.paymentTxHash ?? null,
+        proofTx: anchor.txHash,
         scanId: onchainScanId,
         reportHash,
         reportJson: toJsonValue(report),
@@ -124,7 +119,7 @@ export async function POST(req: NextRequest) {
       await prisma.userUsage.update({
         where: { walletAddress },
         data: {
-          freeScanUsed: isFreeQuick ? true : usage.freeScanUsed,
+          freeScansUsed: isFreeQuick ? { increment: 1 } : undefined,
           scanCount: { increment: 1 }
         }
       });
@@ -137,7 +132,10 @@ export async function POST(req: NextRequest) {
         report,
         reportHash,
         isFreeQuick,
-        price
+        price,
+        proofAnchored: anchor.anchored,
+        proofTx: anchor.txHash,
+        proofAnchorError: anchor.error
       }
     });
   } catch (err) {
@@ -146,6 +144,33 @@ export async function POST(req: NextRequest) {
       { error: err instanceof Error ? err.message : "Scan failed", code: "SCAN_FAILED" },
       { status: 500 }
     );
+  }
+}
+
+async function anchorScanProof(scanId: string, reportHash: string): Promise<{ anchored: boolean; txHash: string | null; error?: string }> {
+  const privateKey =
+    process.env.SERVICE_AGENT_PRIVATE_KEY ||
+    process.env.VERIFIER_AGENT_PRIVATE_KEY ||
+    process.env.DEPLOYER_PRIVATE_KEY;
+
+  if (!privateKey) {
+    return { anchored: false, txHash: null, error: "No service key configured for server-side anchoring." };
+  }
+
+  try {
+    const provider = new ethers.JsonRpcProvider(CONTRACT_CONFIG.rpcUrl);
+    const wallet = new ethers.Wallet(privateKey, provider);
+    const contract = new ethers.Contract(CONTRACT_CONFIG.scanPayments, ScanPaymentsEthersABI, wallet);
+    const tx = await contract.anchorProof(scanId, reportHash);
+    const receipt = await tx.wait();
+    return { anchored: true, txHash: receipt?.hash || tx.hash };
+  } catch (error) {
+    console.error("[Scan] Non-fatal proof anchoring failed:", error instanceof Error ? error.message : error);
+    return {
+      anchored: false,
+      txHash: null,
+      error: error instanceof Error ? error.message : "Proof anchoring failed."
+    };
   }
 }
 

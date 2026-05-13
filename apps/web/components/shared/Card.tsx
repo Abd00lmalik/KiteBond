@@ -27,7 +27,7 @@ export function Card({
     <motion.div
       whileHover={interactive && !reducedMotion ? { y: -3, backgroundColor: "var(--bg-card-hover)" } : undefined}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className={cn("relative overflow-hidden rounded-[var(--radius-lg)] border p-5 shadow-[var(--shadow-md)]", variants[variant], className)}
+      className={cn("cyber-card relative overflow-hidden rounded-[var(--radius-lg)] border p-5 shadow-[var(--shadow-md)]", variants[variant], className)}
       {...props}
     >
       {children}

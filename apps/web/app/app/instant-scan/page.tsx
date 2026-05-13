@@ -28,6 +28,9 @@ type ScanResult = {
   reportHash: `0x${string}`;
   isFreeQuick: boolean;
   price: string;
+  proofAnchored?: boolean;
+  proofTx?: string | null;
+  proofAnchorError?: string;
 };
 
 const prices: Record<ScanDepth, string> = { quick: "0", standard: "1", deep: "3" };
@@ -38,10 +41,6 @@ const riskColors: Record<Severity, { bg: string; border: string; text: string }>
   high: { bg: "rgba(251,146,60,0.08)", border: "rgba(251,146,60,0.25)", text: "#fb923c" },
   critical: { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.25)", text: "#ef4444" }
 };
-
-function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
 
 export default function InstantScanPage() {
   const { address, isConnected } = useAccount();
@@ -123,7 +122,6 @@ export default function InstantScanPage() {
       ) as `0x${string}`;
 
       if (!isFree) {
-        await sleep(120);
         dispatch({ type: "APPROVAL_SIGNED" });
         const approveTxHash = await approve({ spender: getScanPaymentsAddress(), amount: price });
         dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: approveTxHash } });
@@ -138,7 +136,15 @@ export default function InstantScanPage() {
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
-      const scanPromise = safeFetch<{ data?: ScanResult; error?: string }>("/api/scan/instant", {
+      await safeFetch<{ data?: unknown }>(
+        `/api/npm/package?name=${encodeURIComponent(pkg)}&version=${encodeURIComponent(resolvedVersion)}`,
+        { cache: "no-store" }
+      );
+      dispatch({ type: "PACKAGE_RESOLVED" });
+      dispatch({ type: "METADATA_INSPECTED" });
+      dispatch({ type: "SIGNALS_COMPUTED" });
+
+      const json = await safeFetch<{ data?: ScanResult; error?: string }>("/api/scan/instant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,21 +156,11 @@ export default function InstantScanPage() {
           onchainScanId
         })
       });
-
-      await sleep(450);
-      dispatch({ type: "PACKAGE_RESOLVED" });
-      await sleep(450);
-      dispatch({ type: "METADATA_INSPECTED" });
-      await sleep(450);
-      dispatch({ type: "SIGNALS_COMPUTED" });
-
-      const json = await scanPromise;
       if (!json.data) {
         throw new Error(json.error || "Scan failed.");
       }
 
       dispatch({ type: "HEURIST_COMPLETE", payload: { partial: json.data.report } });
-      await sleep(300);
       dispatch({
         type: "REPORT_BUILT",
         payload: {
@@ -174,6 +170,9 @@ export default function InstantScanPage() {
           onchainScanId: json.data.onchainScanId
         }
       });
+      if (json.data.proofTx) {
+        dispatch({ type: "RECEIPT_RECORDED", payload: { txHash: json.data.proofTx } });
+      }
       toast.success("Package scan complete.");
     } catch (error) {
       const message = getErrorMessage(error);

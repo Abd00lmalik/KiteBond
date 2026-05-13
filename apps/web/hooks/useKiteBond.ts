@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { isAddress, parseEventLogs, parseUnits, zeroAddress } from "viem";
-import { usePublicClient, useReadContract, useWriteContract } from "wagmi";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import {
   ERC20ABI,
   HuntRegistryABI,
@@ -110,6 +110,7 @@ export function useRecordScanReceipt() {
 export function useCreateHunt() {
   const { writeContractAsync, isPending } = useWriteContract();
   const publicClient = usePublicClient();
+  const { address } = useAccount();
 
   const createHunt = useCallback(
     async ({
@@ -130,19 +131,41 @@ export function useCreateHunt() {
       deadlineSeconds: number;
     }) => {
       if (!publicClient) throw new Error("Wallet client is not ready");
-      const hash = await writeContractAsync({
-        address: getHuntRegistryAddress(),
+      if (!address) throw new Error("Connect your wallet before creating a hunt");
+      const kitebondAddress = getHuntRegistryAddress();
+      if (!kitebondAddress || !isAddress(kitebondAddress) || kitebondAddress === zeroAddress) {
+        throw new Error(`Invalid KiteBond contract address: ${kitebondAddress}`);
+      }
+      if (!rewardAmount || Number(rewardAmount) <= 0) {
+        throw new Error("Reward amount must be greater than zero");
+      }
+      if (!stakeRequired || Number(stakeRequired) <= 0) {
+        throw new Error("Stake amount must be greater than zero");
+      }
+
+      const args = [
+        packageNameHash,
+        versionHash,
+        termsHash,
+        depthToEnum[scanDepth],
+        parseUnits(rewardAmount, 18),
+        parseUnits(stakeRequired, 18),
+        BigInt(deadlineSeconds)
+      ] as const;
+
+      await publicClient.simulateContract({
+        address: kitebondAddress,
         abi: HuntRegistryABI,
         functionName: "createHunt",
-        args: [
-          packageNameHash,
-          versionHash,
-          termsHash,
-          depthToEnum[scanDepth],
-          parseUnits(rewardAmount, 18),
-          parseUnits(stakeRequired, 18),
-          BigInt(deadlineSeconds)
-        ]
+        args,
+        account: address
+      });
+
+      const hash = await writeContractAsync({
+        address: kitebondAddress,
+        abi: HuntRegistryABI,
+        functionName: "createHunt",
+        args
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       const events = parseEventLogs({
@@ -156,7 +179,7 @@ export function useCreateHunt() {
       if (huntId === undefined) throw new Error("HuntCreated event not found in transaction receipt");
       return { hash, chainHuntId: Number(huntId) };
     },
-    [publicClient, writeContractAsync]
+    [address, publicClient, writeContractAsync]
   );
 
   return { createHunt, isCreating: isPending };

@@ -54,3 +54,32 @@ export const staggerContainer: Variants = {
 };
 
 export const VIEWPORT = { once: true, margin: "-60px" } as const;
+
+export const revealUpCyber: Variants = {
+  hidden: { opacity: 0, y: 40, filter: "blur(8px)" },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] }
+  }
+};
+
+export const revealScaleCyber: Variants = {
+  hidden: { opacity: 0, scale: 0.92, filter: "blur(4px)" },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    filter: "blur(0px)",
+    transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] }
+  }
+};
+
+export const typewriterReveal: Variants = {
+  hidden: { width: "0%", opacity: 0 },
+  visible: {
+    width: "100%",
+    opacity: 1,
+    transition: { duration: 1.2, ease: "linear" }
+  }
+};

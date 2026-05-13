@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: "No server signer configured", code: "SIGNER_MISSING" }, { status: 500 });
     }
 
-    const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_KITE_RPC_URL || KITE_RPC_URL);
+    const provider = new ethers.JsonRpcProvider(KITE_RPC_URL);
     const wallet = new ethers.Wallet(key, provider);
     const contract = new ethers.Contract(HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, wallet);
     const tx = await contract.selectWinner(hunt.chainHuntId, submissionIndex);

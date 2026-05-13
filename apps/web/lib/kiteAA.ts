@@ -7,6 +7,7 @@ export type KiteAAWalletInfo = {
 };
 
 export async function createKiteAASDK() {
+  const { KITE_RPC_URL } = await import("@/lib/contract");
   const mod = await import("gokite-aa-sdk");
   const { GokiteAASDK } = mod as unknown as {
     GokiteAASDK: new (network: string, rpcUrl: string, bundlerUrl: string) => unknown;
@@ -14,7 +15,7 @@ export async function createKiteAASDK() {
 
   return new GokiteAASDK(
     "kite_testnet",
-    process.env.NEXT_PUBLIC_KITE_RPC_URL || "https://rpc-testnet.gokite.ai/",
+    KITE_RPC_URL,
     KITE_AA_BUNDLER
   );
 }

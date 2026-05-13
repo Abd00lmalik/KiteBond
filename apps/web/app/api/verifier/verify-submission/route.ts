@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     let txHash: string | undefined;
     if (submission.hunt.chainHuntId !== null && result.decision !== "needs_manual_review") {
-      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_KITE_RPC_URL || KITE_RPC_URL);
+      const provider = new ethers.JsonRpcProvider(KITE_RPC_URL);
       const wallet = getVerifierWallet(provider);
       const contract = new ethers.Contract(HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, wallet);
       const index = await prisma.submission.count({

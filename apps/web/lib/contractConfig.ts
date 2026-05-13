@@ -1,52 +1,77 @@
 import { isAddress, zeroAddress } from "viem";
 
-function requireAddress(value: string | undefined, label: string): `0x${string}` {
-  if (!value || !isAddress(value) || value === zeroAddress) {
-    throw new Error(`${label} not configured. Set the required NEXT_PUBLIC contract address in apps/web/.env.local.`);
+const ENV = {
+  NEXT_PUBLIC_KITEBOND_CONTRACT: process.env.NEXT_PUBLIC_KITEBOND_CONTRACT,
+  NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT: process.env.NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT,
+  NEXT_PUBLIC_PAYMENT_TOKEN: process.env.NEXT_PUBLIC_PAYMENT_TOKEN,
+  NEXT_PUBLIC_PROTOCOL_TREASURY: process.env.NEXT_PUBLIC_PROTOCOL_TREASURY,
+  NEXT_PUBLIC_KITE_CHAIN_ID: process.env.NEXT_PUBLIC_KITE_CHAIN_ID,
+  NEXT_PUBLIC_KITE_RPC_URL: process.env.NEXT_PUBLIC_KITE_RPC_URL,
+  NEXT_PUBLIC_KITE_EXPLORER: process.env.NEXT_PUBLIC_KITE_EXPLORER,
+  NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL
+} as const;
+
+type EnvKey = keyof typeof ENV;
+
+function requireEnv(key: EnvKey): string {
+  const val = ENV[key];
+  if (!val || val.trim() === "" || val.includes("undefined")) {
+    throw new Error(
+      `[KiteBond] Missing required env variable: ${key}. ` +
+        "Set it in Vercel -> Project -> Environment Variables and redeploy."
+    );
   }
-  return value as `0x${string}`;
+
+  if (key.includes("CONTRACT") || key.includes("TOKEN") || key.includes("TREASURY")) {
+    const clean = val.trim().replace(/['"]/g, "");
+    if (!isAddress(clean) || clean === zeroAddress) {
+      throw new Error(`[KiteBond] Invalid address for ${key}: "${clean}". Must be a valid EVM address.`);
+    }
+    return clean;
+  }
+
+  return val.trim().replace(/^['"]|['"]$/g, "");
 }
 
-function optionalAddress(value: string | undefined): `0x${string}` | null {
-  if (!value || !isAddress(value) || value === zeroAddress) return null;
-  return value as `0x${string}`;
-}
+export const CONTRACT_CONFIG = {
+  kitebond: requireEnv("NEXT_PUBLIC_KITEBOND_CONTRACT") as `0x${string}`,
+  scanPayments: requireEnv("NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT") as `0x${string}`,
+  paymentToken: requireEnv("NEXT_PUBLIC_PAYMENT_TOKEN") as `0x${string}`,
+  treasury: requireEnv("NEXT_PUBLIC_PROTOCOL_TREASURY") as `0x${string}`,
+  chainId: Number(requireEnv("NEXT_PUBLIC_KITE_CHAIN_ID")),
+  rpcUrl: requireEnv("NEXT_PUBLIC_KITE_RPC_URL"),
+  explorerUrl: requireEnv("NEXT_PUBLIC_KITE_EXPLORER"),
+  appUrl: requireEnv("NEXT_PUBLIC_APP_URL")
+} as const;
 
 export function getScanPaymentsAddress(): `0x${string}` {
-  return requireAddress(process.env.NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT, "Scan payments contract");
+  return CONTRACT_CONFIG.scanPayments;
 }
 
 export function getHuntRegistryAddress(): `0x${string}` {
-  return requireAddress(process.env.NEXT_PUBLIC_KITEBOND_CONTRACT, "Hunt registry contract");
+  return CONTRACT_CONFIG.kitebond;
 }
 
 export function getPaymentTokenAddress(): `0x${string}` {
-  return requireAddress(
-    process.env.NEXT_PUBLIC_PAYMENT_TOKEN || process.env.NEXT_PUBLIC_TEST_USDT_ADDRESS,
-    "Payment token"
-  );
+  return CONTRACT_CONFIG.paymentToken;
 }
 
 export function tryGetScanPaymentsAddress(): `0x${string}` | null {
-  return optionalAddress(process.env.NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT);
+  return CONTRACT_CONFIG.scanPayments;
 }
 
 export function tryGetHuntRegistryAddress(): `0x${string}` | null {
-  return optionalAddress(process.env.NEXT_PUBLIC_KITEBOND_CONTRACT);
+  return CONTRACT_CONFIG.kitebond;
 }
 
 export function tryGetPaymentTokenAddress(): `0x${string}` | null {
-  return optionalAddress(process.env.NEXT_PUBLIC_PAYMENT_TOKEN || process.env.NEXT_PUBLIC_TEST_USDT_ADDRESS);
+  return CONTRACT_CONFIG.paymentToken;
 }
 
 export function getMissingContractConfig(): string[] {
-  const missing: string[] = [];
-  if (!tryGetScanPaymentsAddress()) missing.push("NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT");
-  if (!tryGetHuntRegistryAddress()) missing.push("NEXT_PUBLIC_KITEBOND_CONTRACT");
-  if (!tryGetPaymentTokenAddress()) missing.push("NEXT_PUBLIC_PAYMENT_TOKEN");
-  return missing;
+  return [];
 }
 
 export function areContractsConfigured(): boolean {
-  return getMissingContractConfig().length === 0;
+  return true;
 }

@@ -21,7 +21,7 @@ import {
 import { BinaryRain } from "@/components/landing/BinaryRain";
 import { Container } from "@/components/shared/Container";
 import { Card } from "@/components/shared/Card";
-import { VIEWPORT, revealScale, revealUp, staggerContainer } from "@/lib/motion";
+import { VIEWPORT, revealScaleCyber, revealUpCyber, staggerContainer } from "@/lib/motion";
 
 const heroLines = [
   { prefix: "$", text: "kitebond scan lodash@4.17.21", tone: "primary", delay: 0 },
@@ -146,8 +146,9 @@ function HeroSection() {
         </motion.p>
         <motion.h1
           variants={heroItem}
+          data-text="Don't get caught off guard."
           style={{ fontSize: "clamp(3rem, 7vw, 5.5rem)", lineHeight: 1.08, letterSpacing: "-0.03em" }}
-          className="mx-auto mt-6 max-w-[820px]"
+          className="glitch-text heading-display mx-auto mt-6 max-w-[820px]"
         >
           Don&apos;t get caught
           <br />
@@ -207,14 +208,14 @@ function TerminalCard() {
   }, [cycle, reducedMotion]);
 
   return (
-    <Card className="max-w-full border-[var(--border-green)] bg-[#020209] p-0 shadow-[var(--shadow-green)]">
+    <Card className="terminal-frame max-w-full border-[var(--border-green)] bg-[#020209] p-0 text-left shadow-[var(--shadow-green)]">
       <div className="flex items-center gap-2 border-b border-[var(--border-dim)] px-4 py-3">
         <span className="h-2.5 w-2.5 rounded-full bg-[var(--red)]" />
         <span className="h-2.5 w-2.5 rounded-full bg-[var(--amber)]" />
         <span className="h-2.5 w-2.5 rounded-full bg-[var(--green)]" />
         <span className="ml-3 text-xs text-[var(--text-muted)]">kitebond - scan</span>
       </div>
-      <div className="min-h-[220px] space-y-2 break-words p-5 font-mono text-[0.8rem] leading-7">
+      <div className="terminal-body min-h-[220px] space-y-2 break-words p-5 pl-4 text-left font-terminal text-[0.8rem] leading-7">
         {heroLines.slice(0, visibleLines).map((line, index) => (
           <motion.p
             key={`${line.text}-${cycle}`}
@@ -254,14 +255,14 @@ function ProblemSection() {
         style={{ background: "radial-gradient(ellipse, rgba(239,68,68,0.07) 0%, transparent 70%)" }}
       />
       <Container className="relative z-[2]">
-        <motion.p variants={revealUp} className="label-sm label-orange">Problem</motion.p>
-        <motion.h2 variants={revealUp} className="mt-3 max-w-3xl">Every npm install is a trust decision.</motion.h2>
-        <motion.p variants={revealUp} className="mt-4 max-w-3xl text-lg text-[var(--text-secondary)]">
+        <motion.p variants={revealUpCyber} className="label-sm label-orange">Problem</motion.p>
+        <motion.h2 variants={revealUpCyber} className="mt-3 max-w-3xl">Every npm install is a trust decision.</motion.h2>
+        <motion.p variants={revealUpCyber} className="mt-4 max-w-3xl text-lg text-[var(--text-secondary)]">
           Malicious packages hide in supply chains. Most developers never check.
         </motion.p>
         <motion.div variants={staggerContainer} className="mt-10 grid gap-5 md:grid-cols-2">
           {threats.map((threat) => (
-            <motion.div key={threat.title} variants={revealScale}>
+            <motion.div key={threat.title} variants={revealScaleCyber}>
               <Card variant="red" interactive className="p-6">
                 <threat.icon className="h-6 w-6 text-[var(--red)]" />
                 <h3 className="mt-5">{threat.title}</h3>
@@ -279,9 +280,9 @@ function TwoPathsSection() {
   return (
     <SectionMotion className="py-24">
       <Container className="relative z-[2]">
-        <motion.p variants={revealUp} className="label-sm label-orange">Two Paths</motion.p>
+        <motion.p variants={revealUpCyber} className="label-sm label-orange">Two Paths</motion.p>
         <motion.div variants={staggerContainer} className="mt-8 grid gap-6 lg:grid-cols-2">
-          <motion.div variants={revealScale}>
+          <motion.div variants={revealScaleCyber}>
             <PathCard
               variant="orange"
               icon={<FileSearch className="h-7 w-7" />}
@@ -292,7 +293,7 @@ function TwoPathsSection() {
               cta="Try Instant Scan"
             />
           </motion.div>
-          <motion.div variants={revealScale}>
+          <motion.div variants={revealScaleCyber}>
             <PathCard
               variant="green"
               icon={<PackageSearch className="h-7 w-7" />}
@@ -354,9 +355,9 @@ function HowItWorksSection() {
         style={{ background: "radial-gradient(ellipse, rgba(251,146,60,0.07) 0%, transparent 70%)" }}
       />
       <Container className="relative z-[2]">
-        <motion.p variants={revealUp} className="label-sm label-orange">How It Works</motion.p>
-        <motion.h2 variants={revealUp} className="mt-3 text-[1.75rem] font-semibold">From package name to settlement.</motion.h2>
-        <motion.div variants={revealUp} className="mt-8 overflow-x-auto pb-3">
+        <motion.p variants={revealUpCyber} className="label-sm label-orange">How It Works</motion.p>
+        <motion.h2 variants={revealUpCyber} className="mt-3 text-[1.75rem] font-semibold">From package name to settlement.</motion.h2>
+        <motion.div variants={revealUpCyber} className="mt-8 overflow-x-auto pb-3">
           <div className="flex min-w-max items-stretch">
             {flow.map((step, index) => (
               <div key={step.n} className="flex items-stretch">
@@ -384,11 +385,11 @@ function WhyKiteSection() {
         style={{ background: "radial-gradient(ellipse, rgba(34,197,94,0.06) 0%, transparent 70%)" }}
       />
       <Container className="relative z-[2]">
-        <motion.p variants={revealUp} className="label-sm label-orange">Why Kite</motion.p>
-        <motion.h2 variants={revealUp} className="mt-3">Settlement belongs on-chain.</motion.h2>
+        <motion.p variants={revealUpCyber} className="label-sm label-orange">Why Kite</motion.p>
+        <motion.h2 variants={revealUpCyber} className="mt-3">Settlement belongs on-chain.</motion.h2>
         <motion.div variants={staggerContainer} className="mt-10 grid gap-5 md:grid-cols-2">
           {kiteTiles.map((tile) => (
-            <motion.div key={tile.title} variants={revealScale}>
+            <motion.div key={tile.title} variants={revealScaleCyber}>
               <Card interactive className="p-6">
                 <tile.icon className="h-6 w-6 text-[var(--orange)]" />
                 <h3 className="mt-4">{tile.title}</h3>
@@ -412,12 +413,12 @@ function SkillPreviewSection() {
       />
       <Container className="relative z-[2] grid gap-8 lg:grid-cols-[0.9fr_1fr] lg:items-center">
         <div>
-          <motion.p variants={revealUp} className="label-sm label-orange">For AI Agents</motion.p>
-          <motion.h2 variants={revealUp} className="mt-3">Agents do not need a UI.</motion.h2>
-          <motion.p variants={revealUp} className="mt-4 text-[var(--text-secondary)]">
+          <motion.p variants={revealUpCyber} className="label-sm label-orange">For AI Agents</motion.p>
+          <motion.h2 variants={revealUpCyber} className="mt-3">Agents do not need a UI.</motion.h2>
+          <motion.p variants={revealUpCyber} className="mt-4 text-[var(--text-secondary)]">
             KiteBond publishes open hunts and full participation instructions at /skill.md. Any agent with an EVM wallet can stake, analyze, and earn rewards.
           </motion.p>
-          <motion.div variants={revealUp} className="mt-6 flex flex-wrap gap-3">
+          <motion.div variants={revealUpCyber} className="mt-6 flex flex-wrap gap-3">
             <Link href="/skill.md" className="rounded-[var(--radius-md)] border border-[var(--border-orange)] px-4 py-2 font-semibold text-[var(--orange)]">
               Read skill.md
             </Link>
@@ -426,7 +427,7 @@ function SkillPreviewSection() {
             </Link>
           </motion.div>
         </div>
-        <motion.div variants={revealScale}>
+        <motion.div variants={revealScaleCyber}>
           <Card className="bg-[#020208] p-6 font-mono text-sm text-[var(--green)]">
             <p>GET /api/agent/hunts?status=Open</p>
             <p className="mt-3">GET /api/agent/hunts/:id</p>

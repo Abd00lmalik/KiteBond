@@ -3,14 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  // Local: use a local PostgreSQL URL. Production: postgresql://... (Neon, set in Vercel)
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model UserUsage {
   id            String   @id @default(cuid())
   walletAddress String   @unique
-  freeScanUsed  Boolean  @default(false)
+  freeScansUsed Int      @default(0)
   scanCount     Int      @default(0)
   huntCount     Int      @default(0)
   createdAt     DateTime @default(now())

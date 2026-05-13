@@ -3,7 +3,7 @@ import type { Abi, Address } from "viem";
 import HuntRegistryJson from "./abi/KiteBondHuntRegistry.json";
 import ScanPaymentsJson from "./abi/KiteBondScanPayments.json";
 import ERC20ABIJson from "./abi/ERC20.json";
-import { areContractsConfigured } from "./contractConfig";
+import { CONTRACT_CONFIG, areContractsConfigured } from "./contractConfig";
 
 type AbiArtifact = { abi: unknown };
 
@@ -15,18 +15,14 @@ const huntAbiSource = extractAbi(HuntRegistryJson);
 const scanAbiSource = extractAbi(ScanPaymentsJson);
 const erc20AbiSource = extractAbi(ERC20ABIJson);
 
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-
 export const KITE_CHAIN_ID = 2368;
-export const KITE_RPC_URL = process.env.NEXT_PUBLIC_KITE_RPC_URL || "https://rpc-testnet.gokite.ai/";
-export const KITE_EXPLORER = process.env.NEXT_PUBLIC_KITE_EXPLORER || "https://testnet.kitescan.ai";
+export const KITE_RPC_URL = CONTRACT_CONFIG.rpcUrl;
+export const KITE_EXPLORER = CONTRACT_CONFIG.explorerUrl;
 
-export const HUNT_REGISTRY_ADDRESS = (process.env.NEXT_PUBLIC_KITEBOND_CONTRACT || ZERO_ADDRESS) as Address;
-export const SCAN_PAYMENTS_ADDRESS = (process.env.NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT || ZERO_ADDRESS) as Address;
-export const PAYMENT_TOKEN_ADDRESS = (process.env.NEXT_PUBLIC_PAYMENT_TOKEN ||
-  process.env.NEXT_PUBLIC_TEST_USDT_ADDRESS ||
-  "0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63") as Address;
-export const PROTOCOL_TREASURY = (process.env.NEXT_PUBLIC_PROTOCOL_TREASURY || ZERO_ADDRESS) as Address;
+export const HUNT_REGISTRY_ADDRESS = CONTRACT_CONFIG.kitebond as Address;
+export const SCAN_PAYMENTS_ADDRESS = CONTRACT_CONFIG.scanPayments as Address;
+export const PAYMENT_TOKEN_ADDRESS = CONTRACT_CONFIG.paymentToken as Address;
+export const PROTOCOL_TREASURY = CONTRACT_CONFIG.treasury as Address;
 
 export const KITEBOND_ADDRESS = HUNT_REGISTRY_ADDRESS;
 export const KITEBOND_CONTRACT_ADDRESS = HUNT_REGISTRY_ADDRESS;

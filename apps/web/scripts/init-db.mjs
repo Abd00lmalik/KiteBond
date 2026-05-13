@@ -1,7 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
-const databaseUrl = process.env.DATABASE_URL || "file:./dev.db";
+const databaseUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/kitebond";
+
+if (databaseUrl.startsWith("file:")) {
+  console.error("Prisma is configured for PostgreSQL. Set DATABASE_URL to a postgresql:// connection string.");
+  process.exit(1);
+}
 
 const generate = spawnSync("npx", ["prisma", "generate"], {
   cwd: process.cwd(),

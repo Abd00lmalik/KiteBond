@@ -7,6 +7,7 @@ import {
   PROTOCOL_TREASURY,
   SCAN_PAYMENTS_ADDRESS
 } from "@/lib/contract";
+import { CONTRACT_CONFIG } from "@/lib/contractConfig";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export async function GET() {
       },
       skillDoc: "/skill.md",
       skillPage: "/app/skill",
-      apiBase: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+      apiBase: CONTRACT_CONFIG.appUrl
     });
   } catch (error) {
     return NextResponse.json(
