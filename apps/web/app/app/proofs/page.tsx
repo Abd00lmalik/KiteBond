@@ -62,10 +62,11 @@ export default function ProofArchivePage() {
       {tab === "scans" ? (
         <div className="grid gap-3">
           {scanProofs.map((proof) => (
-            <Link key={proof.id} href={`/proof/${proof.id}`} className="card grid gap-3 p-4 transition hover:border-[var(--border-orange)] md:grid-cols-[1fr_auto_auto] md:items-center">
+            <Link key={proof.id} href={`/proof/${proof.id}`} className="proof-card grid gap-3 transition hover:border-[var(--border-green)] md:grid-cols-[1fr_auto_auto] md:items-center">
               <div>
+                <p className="label">Scan receipt</p>
                 <p className="font-semibold text-[var(--text-primary)]">{proof.packageName}@{proof.version}</p>
-                <p className="address text-xs text-[var(--text-muted)]">{truncateHash(proof.reportHash, 10, 8)}</p>
+                <p className="hash text-xs">{truncateHash(proof.reportHash, 10, 8)}</p>
               </div>
               <p className="text-xs text-[var(--text-muted)]">{new Date(proof.createdAt).toLocaleString()}</p>
               <TxLink hash={proof.proofTx} />
@@ -76,8 +77,9 @@ export default function ProofArchivePage() {
       ) : (
         <div className="grid gap-3">
           {huntProofs.map((proof) => (
-            <Link key={proof.id} href={`/app/hunts/${proof.id}`} className="card grid gap-3 p-4 transition hover:border-[var(--border-orange)] md:grid-cols-[1fr_auto_auto] md:items-center">
+            <Link key={proof.id} href={`/app/hunts/${proof.id}`} className="proof-card grid gap-3 transition hover:border-[var(--border-green)] md:grid-cols-[1fr_auto_auto] md:items-center">
               <div>
+                <p className="label">Settlement receipt</p>
                 <p className="font-semibold text-[var(--text-primary)]">{proof.packageName}@{proof.version}</p>
                 <p className="text-xs text-[var(--text-muted)]">Winner {truncateHash(proof.winnerAddress, 8, 6)}</p>
               </div>

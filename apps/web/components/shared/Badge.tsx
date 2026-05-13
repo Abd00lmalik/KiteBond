@@ -33,6 +33,17 @@ const tones: Record<BadgeTone, string> = {
   winner: "border-[var(--border-orange)] bg-[var(--orange)] text-black"
 };
 
+const aliasTones: Record<string, BadgeTone> = {
+  open: "pending",
+  inprogress: "high",
+  verifiedvalid: "verified",
+  verifiedinvalid: "invalid",
+  winner: "winner",
+  slashed: "slashed",
+  settled: "verified",
+  submitted: "pending"
+};
+
 export function Badge({
   tone = "pending",
   children,
@@ -46,7 +57,8 @@ export function Badge({
   icon?: ReactNode;
   className?: string;
 }) {
-  const key = (tone in tones ? tone : "pending") as BadgeTone;
+  const normalized = typeof tone === "string" ? tone.replace(/\s+/g, "").toLowerCase() : "pending";
+  const key = (tone in tones ? tone : aliasTones[normalized] || "pending") as BadgeTone;
   const Icon = key === "verified" ? Check : key === "invalid" || key === "slashed" ? X : key === "winner" ? Trophy : key === "pending" ? Circle : null;
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.08em]", tones[key], className)}>

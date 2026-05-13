@@ -20,20 +20,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body className={`${inter.variable} ${display.variable} ${mono.variable}`}>
         <div className="scan-line" aria-hidden="true" />
-        <div
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundImage: `
-              linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px)
-            `,
-            backgroundSize: "52px 52px",
-            pointerEvents: "none",
-            zIndex: 0
-          }}
-        />
+        <div className="cyber-grid-large" aria-hidden="true" />
+        <div className="cyber-grid" aria-hidden="true" />
         <Providers>
           <PageShell>{children}</PageShell>
         </Providers>
