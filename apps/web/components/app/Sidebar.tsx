@@ -19,12 +19,12 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full w-16 shrink-0 flex-col border-r border-[var(--border-dim)] bg-[var(--bg-surface)] p-2 md:w-[240px] md:p-4">
-      <Link href="/" className="mb-8 flex items-center justify-center gap-2 text-xl font-semibold md:justify-start">
+    <div className="sidebar flex h-full w-full shrink-0 flex-col p-4">
+      <Link href="/" className="mb-8 flex items-center gap-2 text-xl font-semibold">
         <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] text-[var(--orange)]">
           <Rocket className="h-4 w-4" aria-hidden="true" />
         </span>
-        <span className="hidden md:inline">KiteBond</span>
+        <span>KiteBond</span>
       </Link>
       <nav className="space-y-1">
         {nav.map((item) => {
@@ -33,20 +33,20 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`focus-ring flex w-full items-center justify-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm transition md:justify-start ${
+              className={`focus-ring flex w-full items-center gap-3 px-3 py-2.5 text-sm transition ${
                 active
-                  ? "rounded-l-none border-l-2 border-[var(--orange)] bg-[var(--orange-dim)] text-[var(--orange)]"
-                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-glass)] hover:text-[var(--text-primary)]"
+                  ? "nav-item-active"
+                  : "nav-item"
               }`}
               aria-label={item.label}
             >
               <item.icon className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden md:inline">{item.label}</span>
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
-      <div className="mt-auto hidden md:block">
+      <div className="mt-auto">
         <WalletPanel />
       </div>
     </div>

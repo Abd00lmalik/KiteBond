@@ -71,11 +71,12 @@ html,
 body {
   min-height: 100vh;
   margin: 0;
-  background-color: #04040e;
+  background-color: #03030d;
   background-image:
-    radial-gradient(ellipse 90% 55% at 50% -5%, rgba(251, 146, 60, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 35% at 90% 40%, rgba(251, 146, 60, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse 40% 30% at 10% 75%, rgba(34, 197, 94, 0.03) 0%, transparent 55%);
+    radial-gradient(ellipse 110% 60% at 50% -8%, rgba(251, 146, 60, 0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 40% at 88% 35%, rgba(251, 146, 60, 0.05) 0%, transparent 55%),
+    radial-gradient(ellipse 45% 35% at 12% 70%, rgba(34, 197, 94, 0.04) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 50% 100%, rgba(251, 146, 60, 0.03) 0%, transparent 50%);
   background-attachment: fixed;
   color: var(--text-primary);
   font-family: var(--font-sans, Inter, system-ui, sans-serif);
@@ -189,29 +190,85 @@ pre,
 .card {
   position: relative;
   overflow: hidden;
-  background: var(--bg-card);
-  border: 1px solid var(--border-default);
+  background: rgba(12, 12, 26, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .card--orange {
   border-color: var(--border-orange);
-  box-shadow: var(--shadow-md), var(--shadow-orange);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.4), var(--shadow-orange);
 }
 
 .card--green {
   border-color: var(--border-green);
-  box-shadow: var(--shadow-md), var(--shadow-green);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.4), var(--shadow-green);
 }
 
 .card--red {
   border-color: var(--border-red);
-  box-shadow: var(--shadow-md), var(--shadow-red);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.4), var(--shadow-red);
 }
 
 .card--amber {
   border-color: var(--border-amber);
+}
+
+.card-glass {
+  background: rgba(12, 12, 26, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.card-glass:hover {
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 0 24px rgba(251, 146, 60, 0.05);
+}
+
+.card-glass-orange {
+  border-color: rgba(251, 146, 60, 0.22);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4), 0 0 32px rgba(251, 146, 60, 0.07);
+}
+
+.card-glass-green {
+  border-color: rgba(34, 197, 94, 0.2);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4), 0 0 32px rgba(34, 197, 94, 0.06);
+}
+
+.card-glass-red {
+  border-color: rgba(239, 68, 68, 0.2);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4), 0 0 32px rgba(239, 68, 68, 0.06);
+}
+
+.sidebar {
+  background: rgba(6, 6, 16, 0.85);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nav-item-active {
+  background: rgba(251, 146, 60, 0.1);
+  border-left: 2px solid #fb923c;
+  color: #fb923c;
+  border-radius: 0 8px 8px 0;
+  font-weight: 500;
+}
+
+.nav-item {
+  color: rgba(155, 155, 175, 1);
+  border-left: 2px solid transparent;
+  border-radius: 0 8px 8px 0;
+}
+
+.nav-item:hover {
+  color: rgba(241, 241, 245, 1);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .focus-ring {

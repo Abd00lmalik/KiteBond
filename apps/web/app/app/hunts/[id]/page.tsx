@@ -8,9 +8,12 @@ import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
+import { useHuntPreflight } from "@/hooks/useHuntPreflight";
 import { useApproveToken, useStakeAndJoin, useSubmitReportOnChain } from "@/hooks/useKiteBond";
-import { HUNT_REGISTRY_ADDRESS } from "@/lib/contract";
+import { getHuntRegistryAddress, getMissingContractConfig } from "@/lib/contractConfig";
+import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { formatUsdt, truncateHash } from "@/lib/utils";
 
 type Submission = {
@@ -54,6 +57,15 @@ export default function HuntDetailPage() {
   const [loading, setLoading] = useState(true);
   const [stakeTx, setStakeTx] = useState<string | null>(null);
   const [selectingId, setSelectingId] = useState<string | null>(null);
+  const preflight = useHuntPreflight({ stakeAmount: hunt?.stakeRequired, rewardAmount: hunt?.rewardAmount });
+  const missingContracts = getMissingContractConfig();
+  const huntSpender = (() => {
+    try {
+      return getHuntRegistryAddress();
+    } catch {
+      return null;
+    }
+  })();
 
   const isCreator = Boolean(address && hunt?.creatorAddress.toLowerCase() === address.toLowerCase());
   const currentUserSubmission = useMemo(
@@ -65,12 +77,11 @@ export default function HuntDetailPage() {
     if (!params.id) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/hunts/${params.id}`, { cache: "no-store" });
-      const json = (await res.json()) as { data?: Hunt; error?: string };
-      if (!res.ok || !json.data) throw new Error(json.error || "Hunt not found");
+      const json = await safeFetch<{ data?: Hunt }>(`/api/hunts/${params.id}`, { cache: "no-store" });
+      if (!json.data) throw new Error("Hunt not found");
       setHunt(json.data);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Hunt load failed.");
+      toast.error(error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt load failed.");
     } finally {
       setLoading(false);
     }
@@ -85,8 +96,24 @@ export default function HuntDetailPage() {
       toast.error("Connect your wallet before joining.");
       return;
     }
+    if (!preflight.correctNetwork) {
+      toast.error("Switch to KiteAI Testnet before joining.");
+      return;
+    }
+    if (!preflight.contractsConfigured) {
+      toast.error(`Contracts not configured: ${missingContracts.join(", ") || "missing deployment env"}`);
+      return;
+    }
+    if (!preflight.hasEnoughUsdtForStake) {
+      toast.error(`Insufficient USDT stake balance. Have ${preflight.formattedUsdtBalance} USDT.`);
+      return;
+    }
+    if (!preflight.hasKiteForGas) {
+      toast.error("Low KITE for gas. Fund at faucet.gokite.ai.");
+      return;
+    }
     try {
-      await approve({ spender: HUNT_REGISTRY_ADDRESS, amount: hunt.stakeRequired });
+      await approve({ spender: getHuntRegistryAddress(), amount: hunt.stakeRequired });
       const tx = await stakeAndJoin({ chainHuntId: hunt.chainHuntId });
       setStakeTx(tx);
       toast.success("Stake locked on Kite.");
@@ -127,7 +154,7 @@ export default function HuntDetailPage() {
 
     try {
       const submitTx = await submitReport({ chainHuntId: hunt.chainHuntId, reportHash });
-      const res = await fetch(`/api/agent/hunts/${hunt.id}/submit-report`, {
+      const json = await safeFetch<{ data?: Submission }>(`/api/agent/hunts/${hunt.id}/submit-report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -138,8 +165,7 @@ export default function HuntDetailPage() {
           reportJson: report
         })
       });
-      const json = (await res.json()) as { data?: Submission; error?: string };
-      if (!res.ok || !json.data) throw new Error(json.error || "Report submission failed");
+      if (!json.data) throw new Error("Report submission failed");
 
       toast.success("Report submitted for verifier review.");
       await loadHunt();
@@ -152,13 +178,11 @@ export default function HuntDetailPage() {
     if (!hunt || !address) return;
     setSelectingId(submissionId);
     try {
-      const res = await fetch(`/api/hunts/${hunt.id}/select-winner`, {
+      await safeFetch(`/api/hunts/${hunt.id}/select-winner`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ submissionId, walletAddress: address })
       });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error || "Winner selection failed");
       toast.success("Winner selected and settlement recorded.");
       await loadHunt();
     } catch (error) {
@@ -201,6 +225,24 @@ export default function HuntDetailPage() {
           </div>
           <div className="card p-5">
             <p className="label text-brand-orange">Agent Action</p>
+            {huntSpender && (
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                <span className="font-mono">Approving stake spender: </span>
+                <a
+                  href={`https://testnet.kitescan.ai/address/${huntSpender}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[var(--blue)]"
+                >
+                  {huntSpender.slice(0, 8)}...{huntSpender.slice(-6)}
+                </a>
+              </p>
+            )}
+            {!preflight.contractsConfigured && (
+              <p className="mt-2 text-xs text-[var(--amber)]">
+                Missing contract config: {missingContracts.join(", ")}
+              </p>
+            )}
             {!isConnected ? (
               <div className="mt-4"><ConnectButton /></div>
             ) : isCreator ? (
@@ -209,7 +251,12 @@ export default function HuntDetailPage() {
               <p className="mt-3 text-sm">Your submission status: {currentUserSubmission.status}</p>
             ) : (
               <div className="mt-4 space-y-3">
-                <button type="button" onClick={joinHunt} disabled={isApproving || isStaking} className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-brand-orange px-4 py-3 font-semibold text-black disabled:opacity-60">
+                <button
+                  type="button"
+                  onClick={joinHunt}
+                  disabled={isApproving || isStaking || !preflight.correctNetwork || !preflight.contractsConfigured || !preflight.hasEnoughUsdtForStake || !preflight.hasKiteForGas}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-brand-orange px-4 py-3 font-semibold text-black disabled:opacity-60"
+                >
                   {isApproving || isStaking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
                   {isApproving ? "Approving stake..." : isStaking ? "Joining hunt..." : "Stake & Join"}
                 </button>
@@ -223,6 +270,7 @@ export default function HuntDetailPage() {
         </div>
       }
     >
+      <PageGlow color="blue" position="top-right" />
       <div className="card card--orange p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>

@@ -9,7 +9,9 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { addressUrl } from "@/lib/contract";
+import { safeFetch } from "@/lib/safeFetch";
 import { truncateHash } from "@/lib/utils";
 
 type Config = {
@@ -80,8 +82,7 @@ export default function SkillPage() {
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/agent/config", { cache: "no-store" })
-      .then((res) => res.json())
+    void safeFetch<Config>("/api/agent/config", { cache: "no-store" })
       .then((json: Config) => setConfig(json))
       .catch(() => setConfig(null));
   }, []);
@@ -106,6 +107,7 @@ export default function SkillPage() {
 
   return (
     <AppShell>
+      <PageGlow color="blue" position="top-center" />
       <PageHeader
         label="AGENT PARTICIPATION"
         title="Skill Docs"

@@ -147,7 +147,7 @@ function HeroSection() {
       <div className="glow-orb left-[8%] top-[18%] h-[420px] w-[620px] bg-[radial-gradient(ellipse,rgba(251,146,60,0.12),transparent_70%)]" />
       <div className="glow-orb bottom-[6%] right-[5%] h-[360px] w-[520px] bg-[radial-gradient(ellipse,rgba(34,197,94,0.07),transparent_70%)]" style={{ animationDelay: "-8s" }} />
       <Container className="grid items-center gap-10 lg:grid-cols-[0.9fr_1fr]">
-        <motion.div variants={heroContainer} initial={false} animate="show">
+        <motion.div variants={heroContainer} initial="hidden" animate="show">
           <motion.p variants={heroItem} className="label-sm label-orange">
             NPM SUPPLY-CHAIN SECURITY - POWERED BY KITE
           </motion.p>
@@ -174,7 +174,7 @@ function HeroSection() {
             </Link>
           </motion.div>
         </motion.div>
-        <motion.div initial={false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: "easeOut" }}>
           <TerminalCard />
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Card variant="orange" className="p-4">

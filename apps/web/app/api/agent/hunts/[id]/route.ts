@@ -6,28 +6,35 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const hunt = await prisma.hunt.findUnique({
-    where: { id: params.id },
-    include: { submissions: true }
-  });
+  try {
+    const hunt = await prisma.hunt.findUnique({
+      where: { id: params.id },
+      include: { submissions: true }
+    });
 
-  if (!hunt) {
-    return NextResponse.json({ error: "Hunt not found", code: "HUNT_NOT_FOUND" }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    data: {
-      ...hunt,
-      rewardAmount: parseUnits(hunt.rewardAmount, 18).toString(),
-      stakeRequired: parseUnits(hunt.stakeRequired, 18).toString(),
-      deadline: hunt.deadline.toISOString(),
-      createdAt: hunt.createdAt.toISOString(),
-      updatedAt: hunt.updatedAt.toISOString(),
-      submissions: hunt.submissions.map((submission: (typeof hunt.submissions)[number]) => ({
-        ...submission,
-        submittedAt: submission.submittedAt.toISOString(),
-        updatedAt: submission.updatedAt.toISOString()
-      }))
+    if (!hunt) {
+      return NextResponse.json({ error: "Hunt not found", code: "HUNT_NOT_FOUND" }, { status: 404 });
     }
-  });
+
+    return NextResponse.json({
+      data: {
+        ...hunt,
+        rewardAmount: parseUnits(hunt.rewardAmount, 18).toString(),
+        stakeRequired: parseUnits(hunt.stakeRequired, 18).toString(),
+        deadline: hunt.deadline.toISOString(),
+        createdAt: hunt.createdAt.toISOString(),
+        updatedAt: hunt.updatedAt.toISOString(),
+        submissions: hunt.submissions.map((submission: (typeof hunt.submissions)[number]) => ({
+          ...submission,
+          submittedAt: submission.submittedAt.toISOString(),
+          updatedAt: submission.updatedAt.toISOString()
+        }))
+      }
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch hunt", code: "AGENT_HUNT_DETAIL_ERROR" },
+      { status: 500 }
+    );
+  }
 }

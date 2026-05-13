@@ -5,14 +5,18 @@ import { useRouter } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { ArrowRight, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
-import { keccak256, stringToHex } from "viem";
+import { keccak256, parseUnits, stringToHex } from "viem";
 import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
+import { PageGlow } from "@/components/shared/PageGlow";
+import { useHuntPreflight } from "@/hooks/useHuntPreflight";
 import { useApproveToken, useCreateHunt } from "@/hooks/useKiteBond";
-import { HUNT_REGISTRY_ADDRESS, PROTOCOL_TREASURY } from "@/lib/contract";
+import { PROTOCOL_TREASURY } from "@/lib/contract";
+import { getHuntRegistryAddress, getMissingContractConfig } from "@/lib/contractConfig";
+import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { truncateHash } from "@/lib/utils";
 
 type PackageMeta = {
@@ -36,6 +40,31 @@ const durations = [
   { label: "custom", seconds: 0 }
 ];
 
+type HuntParams = {
+  packageName: string;
+  rewardAmount: string;
+  stakeRequired: string;
+  deadlineDuration: number;
+};
+
+function validateHuntParams(params: HuntParams): string | null {
+  if (!params.packageName.trim()) return "Package name required";
+  if (!params.rewardAmount || Number(params.rewardAmount) <= 0) return "Reward must be > 0";
+  if (!params.stakeRequired || Number(params.stakeRequired) <= 0) return "Stake must be > 0";
+  if (!params.deadlineDuration || Number(params.deadlineDuration) <= 0) return "Deadline required";
+
+  try {
+    const rewardWei = parseUnits(params.rewardAmount, 18);
+    const stakeWei = parseUnits(params.stakeRequired, 18);
+    if (rewardWei === 0n) return "Reward too small";
+    if (stakeWei === 0n) return "Stake too small";
+  } catch {
+    return "Invalid numeric values";
+  }
+
+  return null;
+}
+
 export default function AgentHuntPage() {
   const router = useRouter();
   const { address, isConnected } = useAccount();
@@ -50,6 +79,15 @@ export default function AgentHuntPage() {
   const [investigationFocus, setInvestigationFocus] = useState("");
   const [meta, setMeta] = useState<PackageMeta | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
+  const preflight = useHuntPreflight({ rewardAmount, stakeAmount: stakeRequired });
+  const missingContracts = getMissingContractConfig();
+  const huntSpender = (() => {
+    try {
+      return getHuntRegistryAddress();
+    } catch {
+      return null;
+    }
+  })();
 
   const selectedDuration = useMemo(() => durations.find((duration) => duration.label === durationLabel) || durations[0], [durationLabel]);
   const deadlineSeconds = selectedDuration.seconds || Math.max(3600, Math.round(Number(customHours || "2") * 3600));
@@ -72,13 +110,14 @@ export default function AgentHuntPage() {
     const timer = window.setTimeout(async () => {
       setLoadingMeta(true);
       try {
-        const res = await fetch(`/api/npm/package?name=${encodeURIComponent(pkg)}&version=${encodeURIComponent(version.trim() || "latest")}`);
-        const json = (await res.json()) as { data?: PackageMeta; error?: string };
-        if (!res.ok || !json.data) throw new Error(json.error || "Package lookup failed");
+        const json = await safeFetch<{ data?: PackageMeta }>(
+          `/api/npm/package?name=${encodeURIComponent(pkg)}&version=${encodeURIComponent(version.trim() || "latest")}`
+        );
+        if (!json.data) throw new Error("Package lookup failed");
         setMeta(json.data);
       } catch (error) {
         setMeta(null);
-        toast.error(error instanceof Error ? error.message : "Package lookup failed.");
+        toast.error(error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Package lookup failed.");
       } finally {
         setLoadingMeta(false);
       }
@@ -88,12 +127,39 @@ export default function AgentHuntPage() {
   }, [packageName, version]);
 
   async function submitHunt() {
-    if (!isConnected || !address) {
+    if (!isConnected || !address || !preflight.walletConnected) {
       toast.error("Connect your wallet before creating a hunt.");
       return;
     }
-    if (!packageName.trim()) {
-      toast.error("Enter an npm package name.");
+
+    if (!preflight.correctNetwork) {
+      toast.error("Switch to KiteAI Testnet before creating a hunt.");
+      return;
+    }
+
+    if (!preflight.contractsConfigured) {
+      toast.error(`Contracts not configured: ${missingContracts.join(", ") || "missing deployment env"}`);
+      return;
+    }
+
+    const validationError = validateHuntParams({
+      packageName,
+      rewardAmount,
+      stakeRequired,
+      deadlineDuration: deadlineSeconds
+    });
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    if (!preflight.hasEnoughUsdtForReward) {
+      toast.error(`Insufficient USDT. Need ${rewardAmount}, have ${preflight.formattedUsdtBalance}.`);
+      return;
+    }
+
+    if (!preflight.hasKiteForGas) {
+      toast.error("Low KITE balance for gas. Fund from the Kite faucet.");
       return;
     }
 
@@ -111,7 +177,7 @@ export default function AgentHuntPage() {
       };
       const termsHash = keccak256(stringToHex(JSON.stringify(terms)));
 
-      await approve({ spender: HUNT_REGISTRY_ADDRESS, amount: rewardAmount });
+      await approve({ spender: getHuntRegistryAddress(), amount: rewardAmount });
       const { hash, chainHuntId } = await createHunt({
         packageNameHash: keccak256(stringToHex(packageName.trim())),
         versionHash: keccak256(stringToHex(resolvedVersion)),
@@ -121,7 +187,7 @@ export default function AgentHuntPage() {
         deadlineSeconds
       });
 
-      const res = await fetch("/api/hunts", {
+      const json = await safeFetch<{ data?: { id: string } }>("/api/hunts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,17 +203,17 @@ export default function AgentHuntPage() {
           createdTx: hash
         })
       });
-      const json = (await res.json()) as { data?: { id: string }; error?: string };
-      if (!res.ok || !json.data) throw new Error(json.error || "Hunt record failed");
+      if (!json.data) throw new Error("Hunt record failed");
       toast.success("Hunt created on Kite.");
       router.push(`/app/hunts/${json.data.id}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Hunt creation failed.");
+      toast.error(error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt creation failed.");
     }
   }
 
   return (
     <AppShell>
+      <PageGlow color="orange" position="top-center" />
       <PageHeader
         label="AGENT HUNT"
         title="Post a Package Investigation"
@@ -220,10 +286,49 @@ export default function AgentHuntPage() {
             )}
           </div>
 
+          {!preflight.contractsConfigured && (
+            <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-amber)] bg-[var(--amber-dim)] p-4 text-sm text-[var(--amber)]">
+              Contracts not deployed or not configured. Deploy first, then restart.
+              {missingContracts.length > 0 && (
+                <p className="mt-2 font-mono text-xs text-[var(--text-muted)]">Missing: {missingContracts.join(", ")}</p>
+              )}
+            </div>
+          )}
+
+          {huntSpender && (
+            <p className="mt-4 text-xs text-[var(--text-secondary)]">
+              <span className="font-mono">Approving USDT spend for: </span>
+              <a
+                href={`https://testnet.kitescan.ai/address/${huntSpender}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[var(--blue)]"
+              >
+                {huntSpender.slice(0, 8)}...{huntSpender.slice(-6)}
+              </a>
+            </p>
+          )}
+
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <NumberInput label="Reward Amount" value={rewardAmount} onChange={setRewardAmount} help="Paid to the winning agent." />
             <NumberInput label="Required Agent Stake" value={stakeRequired} onChange={setStakeRequired} help="Agents must stake this before submitting." />
           </div>
+
+          {!preflight.hasEnoughUsdtForReward && (
+            <p className="mt-3 text-sm text-[var(--red)]">
+              Insufficient USDT. Balance: {preflight.formattedUsdtBalance} USDT. Need: {rewardAmount} USDT.
+            </p>
+          )}
+
+          {!preflight.hasKiteForGas && (
+            <p className="mt-3 text-sm text-[var(--amber)]">
+              Low KITE for gas. Fund this wallet at{" "}
+              <a href="https://faucet.gokite.ai" target="_blank" rel="noopener noreferrer" className="underline">
+                faucet.gokite.ai
+              </a>
+              .
+            </p>
+          )}
 
           <div className="mt-6">
             <p className="label-sm mb-3">Deadline</p>
@@ -273,8 +378,17 @@ export default function AgentHuntPage() {
           <button
             type="button"
             onClick={submitHunt}
-            disabled={!isConnected || isApproving || isCreating}
+            disabled={
+              !isConnected ||
+              isApproving ||
+              isCreating ||
+              !preflight.correctNetwork ||
+              !preflight.contractsConfigured ||
+              !preflight.hasEnoughUsdtForReward ||
+              !preflight.hasKiteForGas
+            }
             className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
+            title={!preflight.contractsConfigured ? "Deploy contracts first" : undefined}
           >
             {isApproving || isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
             {isApproving ? "Approving USDT..." : isCreating ? "Creating hunt..." : "Create Hunt"}

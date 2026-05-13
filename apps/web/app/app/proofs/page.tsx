@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/app/AppShell";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
+import { safeFetch } from "@/lib/safeFetch";
 import { truncateHash } from "@/lib/utils";
 
 type ScanProof = {
@@ -32,18 +34,17 @@ export default function ProofArchivePage() {
   const [huntProofs, setHuntProofs] = useState<HuntProof[]>([]);
 
   useEffect(() => {
-    void fetch("/api/scans?proofed=true", { cache: "no-store" })
-      .then((res) => res.json())
+    void safeFetch<{ data?: ScanProof[] }>("/api/scans?proofed=true", { cache: "no-store" })
       .then((json: { data?: ScanProof[] }) => setScanProofs(json.data || []))
       .catch(() => setScanProofs([]));
-    void fetch("/api/hunts?status=Settled", { cache: "no-store" })
-      .then((res) => res.json())
+    void safeFetch<{ data?: HuntProof[] }>("/api/hunts?status=Settled", { cache: "no-store" })
       .then((json: { data?: HuntProof[] }) => setHuntProofs(json.data || []))
       .catch(() => setHuntProofs([]));
   }, []);
 
   return (
     <AppShell>
+      <PageGlow color="green" position="top-left" />
       <div className="card card--orange p-6">
         <p className="label text-brand-orange">Proof Archive</p>
         <h1 className="mt-2 text-3xl">Verifiable Records</h1>

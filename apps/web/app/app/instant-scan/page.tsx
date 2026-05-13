@@ -11,10 +11,11 @@ import { CompactScanStatus } from "@/components/app/CompactScanStatus";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useApproveToken, useAuthorizeScan, useRecordScanReceipt } from "@/hooks/useKiteBond";
-import { SCAN_PAYMENTS_ADDRESS } from "@/lib/contract";
+import { areContractsConfigured, getMissingContractConfig, getScanPaymentsAddress } from "@/lib/contractConfig";
 import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { initialScanState, isScanBusy, scanReducer, type ScanDepth, type ScanReport } from "@/lib/scanStateMachine";
 import type { Severity } from "@/lib/heuristics";
@@ -54,6 +55,16 @@ export default function InstantScanPage() {
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
 
   const busy = isScanBusy(context.state) || isApproving || isAuthorizing || isRecordingReceipt;
+  const contractsReady = areContractsConfigured();
+  const missingContracts = getMissingContractConfig();
+  const scanSpender = (() => {
+    try {
+      return getScanPaymentsAddress();
+    } catch {
+      return null;
+    }
+  })();
+
   const result = context.report
     ? {
         report: context.report,
@@ -91,6 +102,14 @@ export default function InstantScanPage() {
     }
     dispatch({ type: "NETWORK_OK" });
 
+    if (!contractsReady) {
+      const missing = missingContracts.join(", ");
+      const message = missing ? `Contracts not configured (${missing}).` : "Contracts not configured.";
+      dispatch({ type: "ERROR", payload: { error: message } });
+      toast.error(message);
+      return;
+    }
+
     const price = prices[scanDepth];
     const isFree = Number(price) === 0;
     dispatch({ type: "PRICE_CHECKED", payload: { isFree, price } });
@@ -106,7 +125,7 @@ export default function InstantScanPage() {
       if (!isFree) {
         await sleep(120);
         dispatch({ type: "APPROVAL_SIGNED" });
-        const approveTxHash = await approve({ spender: SCAN_PAYMENTS_ADDRESS, amount: price });
+        const approveTxHash = await approve({ spender: getScanPaymentsAddress(), amount: price });
         dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: approveTxHash } });
 
         dispatch({ type: "AUTH_SIGNED" });
@@ -184,6 +203,7 @@ export default function InstantScanPage() {
 
   return (
     <AppShell>
+      <PageGlow color="green" position="top-left" />
       <PageHeader
         label="INSTANT SCAN"
         title="Package Scanner"
@@ -247,11 +267,35 @@ export default function InstantScanPage() {
               </div>
             )}
 
+            {!contractsReady && (
+              <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-amber)] bg-[var(--amber-dim)] p-4 text-sm text-[var(--amber)]">
+                Contracts not deployed. Run the deploy script and restart the app.
+                {missingContracts.length > 0 && (
+                  <p className="mt-2 font-mono text-xs text-[var(--text-muted)]">Missing: {missingContracts.join(", ")}</p>
+                )}
+              </div>
+            )}
+
+            {scanSpender && (
+              <div className="mt-4 text-xs text-[var(--text-secondary)]">
+                <span className="font-mono">Approving USDT spend for: </span>
+                <a
+                  href={`https://testnet.kitescan.ai/address/${scanSpender}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono text-[var(--blue)]"
+                >
+                  {scanSpender.slice(0, 8)}...{scanSpender.slice(-6)}
+                </a>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={runScan}
-              disabled={busy}
+              disabled={busy || !contractsReady}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
+              title={!contractsReady ? "Deploy contracts first" : undefined}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               {busy ? "Scan in progress" : "Run Scan"}

@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
-import { isContractConfigured } from "@/lib/contract";
+import { areContractsConfigured, getMissingContractConfig } from "@/lib/contractConfig";
 
 export function AppShell({ children, right }: { children: ReactNode; right?: ReactNode }) {
+  const contractsReady = areContractsConfigured();
+  const missing = getMissingContractConfig();
+
   return (
     <div className="relative flex h-[100dvh] overflow-hidden bg-transparent">
-      <aside className="h-full shrink-0 overflow-y-auto overflow-x-hidden">
+      <aside className="h-full w-[240px] min-w-[240px] shrink-0 overflow-y-auto overflow-x-hidden">
         <Sidebar />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -21,9 +24,12 @@ export function AppShell({ children, right }: { children: ReactNode; right?: Rea
           }`}
         >
           <section className="min-w-0 space-y-5">
-            {!isContractConfigured && (
+            {!contractsReady && (
               <div className="rounded-[var(--radius-lg)] border border-[var(--border-amber)] bg-[var(--amber-dim)] p-4 text-sm text-[var(--amber)]">
                 Contract addresses are not fully configured. Deploy the Kite contracts, update `.env.local`, and restart the web server before signing on-chain transactions.
+                {missing.length > 0 && (
+                  <p className="mt-2 font-mono text-xs text-[var(--text-muted)]">Missing: {missing.join(", ")}</p>
+                )}
               </div>
             )}
             {children}

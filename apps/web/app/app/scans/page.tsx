@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { RiskBadge } from "@/components/app/RiskBadge";
 import { TxLink } from "@/components/shared/TxLink";
+import { safeFetch } from "@/lib/safeFetch";
 import { formatUsdt, truncateHash } from "@/lib/utils";
 
 type Scan = {
@@ -28,14 +30,14 @@ export default function ScanHistoryPage() {
 
   useEffect(() => {
     const url = address ? `/api/scans?wallet=${address}` : "/api/scans";
-    void fetch(url, { cache: "no-store" })
-      .then((res) => res.json())
+    void safeFetch<{ data?: Scan[] }>(url, { cache: "no-store" })
       .then((json: { data?: Scan[] }) => setScans(json.data || []))
       .catch(() => setScans([]));
   }, [address]);
 
   return (
     <AppShell>
+      <PageGlow color="green" position="top-left" />
       <div className="card card--orange p-6">
         <p className="label text-brand-orange">Scans</p>
         <h1 className="mt-2 text-3xl">Scan History</h1>

@@ -10,7 +10,9 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { PAYMENT_TOKEN_ADDRESS, HUNT_REGISTRY_ADDRESS, PROTOCOL_TREASURY, addressUrl } from "@/lib/contract";
+import { safeFetch } from "@/lib/safeFetch";
 import { truncateHash } from "@/lib/utils";
 
 type Stats = {
@@ -46,17 +48,16 @@ export default function OverviewPage() {
   const [hunts, setHunts] = useState<Hunt[]>([]);
 
   useEffect(() => {
-    void fetch("/api/stats", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((json: { data: Stats }) => setStats(json.data))
+    void safeFetch<{ data: Stats }>("/api/stats", { cache: "no-store" })
+      .then((json) => setStats(json.data))
       .catch(() => setStats(null));
   }, []);
 
   useEffect(() => {
     if (!address) return;
     void Promise.all([
-      fetch(`/api/scans?wallet=${address}`, { cache: "no-store" }).then((res) => res.json()) as Promise<{ data: Scan[] }>,
-      fetch(`/api/hunts?creator=${address}`, { cache: "no-store" }).then((res) => res.json()) as Promise<{ data: Hunt[] }>
+      safeFetch<{ data: Scan[] }>(`/api/scans?wallet=${address}`, { cache: "no-store" }),
+      safeFetch<{ data: Hunt[] }>(`/api/hunts?creator=${address}`, { cache: "no-store" })
     ])
       .then(([scanData, huntData]) => {
         setScans(scanData.data || []);
@@ -92,6 +93,7 @@ export default function OverviewPage() {
 
   return (
     <AppShell>
+      <PageGlow color="orange" position="top-right" />
       <PageHeader
         label="PROTOCOL OVERVIEW"
         title="Protocol Overview"

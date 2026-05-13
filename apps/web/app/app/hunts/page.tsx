@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import { AppShell } from "@/components/app/AppShell";
+import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
+import { safeFetch } from "@/lib/safeFetch";
 import { formatUsdt, truncateHash } from "@/lib/utils";
 
 type Hunt = {
@@ -30,9 +32,10 @@ export default function HuntsPage() {
   const loadHunts = useCallback(async (nextFilter = filter) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/hunts?status=${encodeURIComponent(nextFilter)}`, { cache: "no-store" });
-      const json = (await res.json()) as { data?: Hunt[] };
+      const json = await safeFetch<{ data?: Hunt[] }>(`/api/hunts?status=${encodeURIComponent(nextFilter)}`, { cache: "no-store" });
       setHunts(json.data || []);
+    } catch {
+      setHunts([]);
     } finally {
       setLoading(false);
     }
@@ -56,6 +59,7 @@ export default function HuntsPage() {
         </div>
       }
     >
+      <PageGlow color="blue" position="top-right" />
       <div className="card card--orange p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

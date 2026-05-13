@@ -3,6 +3,7 @@ import type { Abi, Address } from "viem";
 import HuntRegistryJson from "./abi/KiteBondHuntRegistry.json";
 import ScanPaymentsJson from "./abi/KiteBondScanPayments.json";
 import ERC20ABIJson from "./abi/ERC20.json";
+import { areContractsConfigured } from "./contractConfig";
 
 type AbiArtifact = { abi: unknown };
 
@@ -30,7 +31,7 @@ export const PROTOCOL_TREASURY = (process.env.NEXT_PUBLIC_PROTOCOL_TREASURY || Z
 export const KITEBOND_ADDRESS = HUNT_REGISTRY_ADDRESS;
 export const KITEBOND_CONTRACT_ADDRESS = HUNT_REGISTRY_ADDRESS;
 export const TEST_USDT_ADDRESS = PAYMENT_TOKEN_ADDRESS;
-export const isContractConfigured = HUNT_REGISTRY_ADDRESS !== ZERO_ADDRESS && SCAN_PAYMENTS_ADDRESS !== ZERO_ADDRESS;
+export const isContractConfigured = areContractsConfigured();
 
 export const HuntRegistryABI = huntAbiSource as unknown as Abi;
 export const ScanPaymentsABI = scanAbiSource as unknown as Abi;
