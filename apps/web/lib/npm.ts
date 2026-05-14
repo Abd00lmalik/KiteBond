@@ -2,18 +2,24 @@ export interface NpmPackageMeta {
   name: string;
   version: string;
   description: string;
-  license: string | null;
+  author: string;
+  license: string;
   repository: string | null;
   homepage: string | null;
-  author: string | null;
-  maintainers: { name: string; email?: string }[];
-  publishedAt: string | null;
-  latestVersion: string;
-  versionCount: number;
+  weeklyDownloads: number;
+  totalVersions: number;
+  publishedAt: string;
+  firstPublishedAt: string;
+  maintainerCount: number;
+  hasTypes: boolean;
+  hasInstallScript: boolean;
   dependencyCount: number;
   devDependencyCount: number;
-  hasInstallScript: boolean;
+  bundleSize: string | null;
+  latestVersion: string;
+  versionCount: number;
   installScriptContent: string | null;
+  maintainers: { name: string; email?: string }[];
   keywords: string[];
   bugs: string | null;
   engines: Record<string, string> | null;
@@ -44,70 +50,94 @@ type NpmVersionDocument = {
   bugs?: string | { url?: string };
   engines?: Record<string, string>;
   deprecated?: string;
+  types?: string;
+  typings?: string;
 };
 
-export async function fetchNpmMeta(name: string, version = "latest"): Promise<NpmPackageMeta> {
-  const normalized = name.trim();
-  if (!normalized || normalized.length > 214) {
-    throw new Error("Package name is invalid.");
-  }
+export async function fetchNpmMeta(packageName: string, version = "latest"): Promise<NpmPackageMeta> {
+  const clean = packageName.trim().toLowerCase();
+  if (!clean || clean.length > 214) throw new Error("Invalid package name.");
 
-  const encoded = encodeURIComponent(normalized);
-  const res = await fetch(`https://registry.npmjs.org/${encoded}`, {
+  const encoded = encodeURIComponent(clean);
+  const regRes = await fetch(`https://registry.npmjs.org/${encoded}`, {
     headers: { Accept: "application/json" },
+    cache: "no-store",
     signal: AbortSignal.timeout(10_000)
   });
 
-  if (res.status === 404) throw new Error(`Package "${normalized}" not found on npm registry.`);
-  if (!res.ok) throw new Error(`npm registry error: ${res.status}`);
+  if (regRes.status === 404) throw new Error(`Package "${clean}" not found on npm.`);
+  if (!regRes.ok) throw new Error(`npm registry error: ${regRes.status}`);
 
-  const doc = (await res.json()) as NpmDocument;
-  const versions = doc.versions ?? {};
-  const resolvedVersion =
-    version === "latest"
-      ? doc["dist-tags"]?.latest ?? Object.keys(versions).pop() ?? "unknown"
-      : version;
+  const reg = (await regRes.json()) as NpmDocument;
 
-  const versionDoc = versions[resolvedVersion];
-  if (!versionDoc) {
-    throw new Error(`Version "${resolvedVersion}" not found for package "${normalized}".`);
+  let weeklyDownloads = 0;
+  try {
+    const dlRes = await fetch(`https://api.npmjs.org/downloads/point/last-week/${encoded}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000)
+    });
+    if (dlRes.ok) {
+      const downloads = (await dlRes.json()) as { downloads?: number };
+      weeklyDownloads = downloads.downloads ?? 0;
+    }
+  } catch {
+    weeklyDownloads = 0;
   }
 
-  const scripts = versionDoc.scripts ?? {};
-  const installScripts = [scripts.preinstall, scripts.install, scripts.postinstall].filter(Boolean);
-  const deps = versionDoc.dependencies ?? {};
-  const devDeps = versionDoc.devDependencies ?? {};
-  const repo = versionDoc.repository;
-  const bugs = versionDoc.bugs;
+  const versions = reg.versions ?? {};
+  const allVersions = Object.keys(versions);
+  const latest = reg["dist-tags"]?.latest ?? allVersions.at(-1) ?? "unknown";
+  const resolvedVersion = version === "latest" ? latest : version;
+  const latestMeta = versions[resolvedVersion];
+  if (!latestMeta) {
+    throw new Error(`Version "${resolvedVersion}" not found for package "${clean}".`);
+  }
 
-  const repository =
-    typeof repo === "string"
-      ? repo
-      : repo?.url
-        ? repo.url.replace(/^git\+/, "").replace(/\.git$/, "")
-        : null;
+  const scripts = latestMeta.scripts ?? {};
+  const installScripts = [scripts.preinstall, scripts.install, scripts.postinstall].filter(Boolean);
+  const maintainers = reg.maintainers ?? [];
+  const author =
+    (typeof latestMeta.author === "string" ? latestMeta.author : latestMeta.author?.name) ||
+    maintainers.map((maintainer) => maintainer.name).filter(Boolean).join(", ") ||
+    "unknown";
+
+  const repoUrl =
+    typeof latestMeta.repository === "string"
+      ? latestMeta.repository
+      : latestMeta.repository?.url ?? null;
+  const repository = repoUrl ? repoUrl.replace(/^git\+/, "").replace(/\.git$/, "") : null;
+  const bugs = latestMeta.bugs;
+  const deps = latestMeta.dependencies ?? {};
+  const devDeps = latestMeta.devDependencies ?? {};
+  const timeMap = reg.time ?? {};
 
   return {
-    name: doc.name ?? normalized,
+    name: reg.name ?? clean,
     version: resolvedVersion,
-    description: versionDoc.description ?? doc.description ?? "",
-    license: versionDoc.license ?? null,
+    description: latestMeta.description ?? reg.description ?? "",
+    author,
+    license: latestMeta.license ?? "none",
     repository,
-    homepage: versionDoc.homepage ?? null,
-    author: typeof versionDoc.author === "string" ? versionDoc.author : versionDoc.author?.name ?? null,
-    maintainers: doc.maintainers ?? [],
-    publishedAt: doc.time?.[resolvedVersion] ?? null,
-    latestVersion: doc["dist-tags"]?.latest ?? resolvedVersion,
-    versionCount: Object.keys(versions).length,
+    homepage: latestMeta.homepage ?? null,
+    weeklyDownloads,
+    totalVersions: allVersions.length,
+    publishedAt: timeMap[resolvedVersion] ?? "",
+    firstPublishedAt: timeMap.created ?? "",
+    maintainerCount: maintainers.length,
+    hasTypes: Boolean(latestMeta.types || latestMeta.typings || latestMeta.devDependencies?.typescript),
+    hasInstallScript: installScripts.length > 0,
     dependencyCount: Object.keys(deps).length,
     devDependencyCount: Object.keys(devDeps).length,
-    hasInstallScript: installScripts.length > 0,
+    bundleSize: null,
+    latestVersion: latest,
+    versionCount: allVersions.length,
     installScriptContent: installScripts.length > 0 ? installScripts.join(" ; ") : null,
-    keywords: versionDoc.keywords ?? [],
+    maintainers,
+    keywords: latestMeta.keywords ?? [],
     bugs: typeof bugs === "string" ? bugs : bugs?.url ?? null,
-    engines: versionDoc.engines ?? null,
-    deprecated: Boolean(versionDoc.deprecated),
-    deprecationMessage: versionDoc.deprecated ?? null,
-    unpublished: Boolean(doc.time?.unpublished)
+    engines: latestMeta.engines ?? null,
+    deprecated: Boolean(latestMeta.deprecated),
+    deprecationMessage: latestMeta.deprecated ?? null,
+    unpublished: Boolean(timeMap.unpublished)
   };
 }

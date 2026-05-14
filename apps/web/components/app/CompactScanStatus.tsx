@@ -58,7 +58,7 @@ const stageSteps = [
   { key: "auth", label: "Authorization", active: "authorizing", doneWhen: ["resolving", "analyzing", "anchoring", "complete"] },
   { key: "resolve", label: "Resolve Package", active: "resolving", doneWhen: ["analyzing", "anchoring", "complete"] },
   { key: "analyze", label: "Heurist Analysis", active: "analyzing", doneWhen: ["anchoring", "complete"] },
-  { key: "anchor", label: "Proof Anchor", active: "anchoring", doneWhen: ["complete"] }
+  { key: "report", label: "Report", active: "anchoring", doneWhen: ["complete"] }
 ] as const;
 
 function indexOfLegacyState(state: ScanState) {
@@ -141,7 +141,7 @@ function StageScanStatus({ stage, error, isFree }: { stage: CompactStage; error?
     authorizing: "Authorizing scan...",
     resolving: "Resolving npm package...",
     analyzing: "Heurist analysis running...",
-    anchoring: "Anchoring proof on Kite...",
+    anchoring: "Building report...",
     complete: "Scan complete.",
     error: error || "Scan failed."
   };

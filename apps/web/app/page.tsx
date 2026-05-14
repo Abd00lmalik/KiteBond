@@ -6,7 +6,6 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
   BadgeDollarSign,
-  CheckCircle2,
   Code2,
   FileSearch,
   GitBranch,
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { BinaryRain } from "@/components/landing/BinaryRain";
 import { GlitchHeadline } from "@/components/landing/GlitchHeadline";
+import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Container } from "@/components/shared/Container";
 import { Card } from "@/components/shared/Card";
 import { VIEWPORT, revealScaleCyber, revealUpCyber, staggerContainer } from "@/lib/motion";
@@ -49,16 +49,6 @@ const threats = [
   { icon: TerminalSquare, title: "Install Scripts", text: "preinstall and postinstall can run code before developers inspect output." },
   { icon: GitBranch, title: "Dependency Hijacks", text: "A trusted package updates while a nested dependency has already been compromised." },
   { icon: Code2, title: "Metadata Spoofing", text: "Cloned readme, weak maintainer signals, missing repository, and no license." }
-];
-
-const flow = [
-  { n: "01", title: "Connect", desc: "EVM wallet on KiteAI Testnet" },
-  { n: "02", title: "Scan", desc: "Enter package name, no uploads" },
-  { n: "03", title: "Authorize", desc: "Pay USDT or use Quick Scan" },
-  { n: "04", title: "Analyze", desc: "Heurist inspects metadata and signals" },
-  { n: "05", title: "Report", desc: "Risk score and recommendations" },
-  { n: "06", title: "Escalate", desc: "Post a bonded Agent Hunt" },
-  { n: "07", title: "Settle", desc: "Agents stake, submit, and settle" }
 ];
 
 const kiteTiles = [
@@ -148,7 +138,7 @@ function HeroSection() {
         <motion.div variants={heroItem}>
           <GlitchHeadline
             text="Don't get caught off guard."
-            className="heading-display mx-auto mt-6 max-w-[820px] text-[clamp(3rem,7vw,5.5rem)] leading-[1.08]"
+            className="mx-auto mt-6 max-w-[820px]"
           />
         </motion.div>
         <motion.div variants={heroItem} className="mx-auto mt-5 max-w-[620px]">
@@ -345,30 +335,15 @@ function PathCard({
 
 function HowItWorksSection() {
   return (
-    <SectionMotion id="how-it-works" className="py-20">
+    <SectionMotion className="py-20">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute left-[-8%] top-[20%] h-[400px] w-[500px] rounded-full blur-[50px]"
         style={{ background: "radial-gradient(ellipse, rgba(251,146,60,0.07) 0%, transparent 70%)" }}
       />
-      <Container className="relative z-[2]">
-        <motion.p variants={revealUpCyber} className="label-sm label-orange">How It Works</motion.p>
-        <motion.h2 variants={revealUpCyber} className="mt-3 text-[1.75rem] font-semibold">From package name to settlement.</motion.h2>
-        <motion.div variants={revealUpCyber} className="mt-8 overflow-x-auto pb-3">
-          <div className="flex min-w-max items-stretch">
-            {flow.map((step, index) => (
-              <div key={step.n} className="flex items-stretch">
-                <div className="flow-step">
-                  <span className="flow-step-number">{step.n}</span>
-                  <span className="flow-step-title">{step.title}</span>
-                  <span className="flow-step-desc">{step.desc}</span>
-                </div>
-                {index < flow.length - 1 && <span className="flow-connector" aria-hidden="true" />}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      </Container>
+      <div className="relative z-[2]">
+        <HowItWorks />
+      </div>
     </SectionMotion>
   );
 }

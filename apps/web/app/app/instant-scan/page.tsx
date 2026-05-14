@@ -22,15 +22,13 @@ import type { Severity } from "@/lib/heuristics";
 import { useAccount } from "wagmi";
 
 type ScanResult = {
-  scanId: string;
+  scanId: string | null;
   onchainScanId: `0x${string}`;
   report: ScanReport;
   reportHash: `0x${string}`;
-  isFreeQuick: boolean;
-  price: string;
+  packageMeta?: unknown;
+  signals?: unknown;
   proofAnchored?: boolean;
-  proofTx?: string | null;
-  proofAnchorError?: string;
 };
 
 const prices: Record<ScanDepth, string> = { quick: "0", standard: "1", deep: "3" };
@@ -90,23 +88,25 @@ export default function InstantScanPage() {
       return;
     }
 
-    if (!isConnected || !address) {
+    const price = prices[scanDepth];
+    const isFree = Number(price) === 0;
+    dispatch({ type: "PRICE_CHECKED", payload: { isFree, price } });
+
+    if (!isFree && (!isConnected || !address)) {
       dispatch({ type: "ERROR", payload: { error: "Connect your wallet first." } });
       setStage("error");
-      toast.error("Connect your wallet before scanning.");
+      toast.error("Connect your wallet before paid scanning.");
       return;
     }
-    dispatch({ type: "WALLET_OK" });
 
-    if (!isCorrectNetwork) {
+    if (!isFree && !isCorrectNetwork) {
       dispatch({ type: "ERROR", payload: { error: "Switch to KiteAI Testnet before scanning." } });
       setStage("error");
       toast.error("Switch to KiteAI Testnet.");
       return;
     }
-    dispatch({ type: "NETWORK_OK" });
 
-    if (!contractsReady) {
+    if (!isFree && !contractsReady) {
       const missing = missingContracts.join(", ");
       const message = missing ? `Contracts not configured (${missing}).` : "Contracts not configured.";
       dispatch({ type: "ERROR", payload: { error: message } });
@@ -115,19 +115,17 @@ export default function InstantScanPage() {
       return;
     }
 
-    const price = prices[scanDepth];
-    const isFree = Number(price) === 0;
-    dispatch({ type: "PRICE_CHECKED", payload: { isFree, price } });
-
     try {
       let authTxHash: `0x${string}` | undefined;
       const packageHash = ethers.keccak256(ethers.toUtf8Bytes(pkg)) as `0x${string}`;
       const versionHash = ethers.keccak256(ethers.toUtf8Bytes(resolvedVersion)) as `0x${string}`;
-      const onchainScanId = ethers.keccak256(
-        ethers.toUtf8Bytes(`${address}:${pkg}:${resolvedVersion}:${scanDepth}:${Date.now()}`)
+      let onchainScanId = ethers.keccak256(
+        ethers.toUtf8Bytes(`${address || "anonymous"}:${pkg}:${resolvedVersion}:${scanDepth}:${Date.now()}`)
       ) as `0x${string}`;
 
       if (!isFree) {
+        dispatch({ type: "WALLET_OK" });
+        dispatch({ type: "NETWORK_OK" });
         dispatch({ type: "APPROVAL_SIGNED" });
         const approveTxHash = await approve({ spender: getScanPaymentsAddress(), amount: price });
         dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: approveTxHash } });
@@ -142,23 +140,13 @@ export default function InstantScanPage() {
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
-      setStage("resolving");
-      await safeFetch<{ data?: unknown }>(
-        `/api/npm/package?name=${encodeURIComponent(pkg)}&version=${encodeURIComponent(resolvedVersion)}`,
-        { cache: "no-store" }
-      );
-      dispatch({ type: "PACKAGE_RESOLVED" });
-      dispatch({ type: "METADATA_INSPECTED" });
-      dispatch({ type: "SIGNALS_COMPUTED" });
-
-      setStage("analyzing");
-      const json = await safeFetch<{ data?: ScanResult; error?: string }>("/api/scan/instant", {
+      const json = await safeFetch<{ success?: boolean; data?: ScanResult; error?: string }>("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          packageName: pkg,
+          package: pkg,
           version: resolvedVersion,
-          scanDepth,
+          address,
           walletAddress: address,
           paymentTxHash: authTxHash,
           onchainScanId
@@ -167,7 +155,10 @@ export default function InstantScanPage() {
       if (!json.data) {
         throw new Error(json.error || "Scan failed.");
       }
-      setStage("anchoring");
+      dispatch({ type: "PACKAGE_RESOLVED" });
+      dispatch({ type: "METADATA_INSPECTED" });
+      dispatch({ type: "SIGNALS_COMPUTED" });
+      onchainScanId = json.data.onchainScanId;
 
       dispatch({ type: "HEURIST_COMPLETE", payload: { partial: json.data.report } });
       dispatch({
@@ -175,13 +166,10 @@ export default function InstantScanPage() {
         payload: {
           report: json.data.report,
           reportHash: json.data.reportHash,
-          scanId: json.data.scanId,
-          onchainScanId: json.data.onchainScanId
+          scanId: json.data.scanId || json.data.onchainScanId,
+          onchainScanId
         }
       });
-      if (json.data.proofTx) {
-        dispatch({ type: "RECEIPT_RECORDED", payload: { txHash: json.data.proofTx } });
-      }
       setStage("complete");
       toast.success("Package scan complete.");
     } catch (error) {
@@ -303,9 +291,9 @@ export default function InstantScanPage() {
             <button
               type="button"
               onClick={runScan}
-              disabled={busy || !contractsReady}
+              disabled={busy || (scanDepth !== "quick" && !contractsReady)}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
-              title={!contractsReady ? "Deploy contracts first" : undefined}
+              title={!contractsReady && scanDepth !== "quick" ? "Deploy contracts first" : undefined}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               {busy ? "Scan in progress" : "Run Scan"}

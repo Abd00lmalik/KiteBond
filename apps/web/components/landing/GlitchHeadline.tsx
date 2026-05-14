@@ -1,76 +1,78 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-interface GlitchHeadlineProps {
-  text: string;
-  className?: string;
-}
-
-const GLITCH_INTERVAL = 5000;
-const GLITCH_DURATION = 400;
-const GLITCH_STEPS = 4;
-const GLITCH_CHARS = "!<>-_\\/[]{}-=+*^?#";
-
-function randomChar() {
-  return GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)];
-}
+const GLITCH_CHARS = "!<>—_\\/[]{}=+*^?#@$%";
+const GLITCH_INTERVAL_MS = 6000;
+const GLITCH_DURATION_MS = 500;
+const GLITCH_FRAMES = 6;
 
 function corruptText(text: string, intensity: number): string {
   return text
     .split("")
     .map((char) => {
-      if (char === " ") return " ";
-      return Math.random() < intensity ? randomChar() : char;
+      if (char === " " || char === ".") return char;
+      return Math.random() < intensity
+        ? GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]
+        : char;
     })
     .join("");
 }
 
-export function GlitchHeadline({ text, className = "" }: GlitchHeadlineProps) {
-  const [displayText, setDisplayText] = useState(text);
-  const [isGlitching, setIsGlitching] = useState(false);
+interface Props {
+  text: string;
+  className?: string;
+}
+
+export function GlitchHeadline({ text, className = "" }: Props) {
+  const [display, setDisplay] = useState(text);
+  const [offsetX, setOffsetX] = useState(0);
+  const activeRef = useRef(false);
+
+  const runGlitch = () => {
+    if (activeRef.current) return;
+    activeRef.current = true;
+
+    const stepMs = GLITCH_DURATION_MS / GLITCH_FRAMES;
+    let frame = 0;
+
+    const tick = window.setInterval(() => {
+      frame += 1;
+      const progress = frame / GLITCH_FRAMES;
+      const intensity = progress < 0.5 ? progress * 2 * 0.45 : (1 - progress) * 2 * 0.45;
+
+      setDisplay(corruptText(text, intensity));
+      setOffsetX((Math.random() - 0.5) * 6);
+
+      if (frame >= GLITCH_FRAMES) {
+        window.clearInterval(tick);
+        setDisplay(text);
+        setOffsetX(0);
+        activeRef.current = false;
+      }
+    }, stepMs);
+  };
 
   useEffect(() => {
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (prefersReduced) return;
 
-    const triggerGlitch = () => {
-      setIsGlitching(true);
-      let step = 0;
-      const stepDuration = GLITCH_DURATION / GLITCH_STEPS;
-
-      const interval = window.setInterval(() => {
-        step += 1;
-        const intensity = step < GLITCH_STEPS / 2 ? step / GLITCH_STEPS : (GLITCH_STEPS - step) / GLITCH_STEPS;
-        setDisplayText(corruptText(text, intensity * 0.4));
-
-        if (step >= GLITCH_STEPS) {
-          window.clearInterval(interval);
-          setDisplayText(text);
-          setIsGlitching(false);
-        }
-      }, stepDuration);
-    };
-
-    const timer = window.setInterval(triggerGlitch, GLITCH_INTERVAL);
-    const init = window.setTimeout(triggerGlitch, 2000);
+    const init = window.setTimeout(runGlitch, 2500);
+    const interval = window.setInterval(runGlitch, GLITCH_INTERVAL_MS);
 
     return () => {
-      window.clearInterval(timer);
       window.clearTimeout(init);
+      window.clearInterval(interval);
     };
-  }, [text]);
+  }, [text]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <h1
-      className={className}
+      className={`hero-headline ${className}`}
       aria-label={text}
-      style={{
-        fontVariantNumeric: "tabular-nums",
-        letterSpacing: isGlitching ? "0.01em" : undefined
-      }}
+      style={{ transform: `translateX(${offsetX}px)`, transition: "transform 0.05s" }}
     >
-      <span aria-hidden="true">{displayText}</span>
+      {display}
     </h1>
   );
 }
