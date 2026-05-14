@@ -8,13 +8,22 @@ import { toJsonValue } from "@/lib/json";
 import { fetchNpmMeta } from "@/lib/npm";
 import { verifyKitePaymentTx } from "@/lib/paymentVerification";
 import { extractSignals } from "@/lib/signals";
-import { inspectTarball, type TarballInspection } from "@/lib/tarball";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 40;
 
 type ScanStage = "auth" | "resolve" | "analyze" | "save";
+type TarballInspection = {
+  fileCount: number;
+  fileList: string[];
+  hasBinaryFiles: boolean;
+  hasObfuscatedJs: boolean;
+  hasHiddenFiles: boolean;
+  suspiciousExtensions: string[];
+  totalSizeKb: number;
+  inspectionNote?: string;
+};
 const REPORT_LIMITATIONS = [
   "Analysis is static and metadata-based. No package code is executed.",
   "Tarball inspection covers file names and sizes only, not file content.",
@@ -143,6 +152,8 @@ export async function POST(req: NextRequest) {
 
   let tarballInfo: TarballInspection | null = null;
   try {
+    // Runtime-only import keeps build tracing resilient on Vercel.
+    const { inspectTarball } = await import("@/lib/tarball");
     tarballInfo = await inspectTarball(meta.name, meta.version);
   } catch (err) {
     console.warn("[Scan] Tarball inspection failed (non-fatal):", err instanceof Error ? err.message : err);
