@@ -19,6 +19,7 @@ export interface NpmPackageMeta {
   latestVersion: string;
   versionCount: number;
   installScriptContent: string | null;
+  lifecycleScriptValues: string[];
   maintainers: { name: string; email?: string }[];
   keywords: string[];
   bugs: string | null;
@@ -97,6 +98,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
   const scripts = latestMeta.scripts ?? {};
   const scriptValues = Object.values(scripts).filter((value): value is string => typeof value === "string");
   const installScripts = [scripts.preinstall, scripts.install, scripts.postinstall].filter(Boolean);
+  const lifecycleScriptValues = installScripts.filter((value): value is string => typeof value === "string");
   const maintainers = reg.maintainers ?? [];
   const author =
     (typeof latestMeta.author === "string" ? latestMeta.author : latestMeta.author?.name) ||
@@ -134,6 +136,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
     latestVersion: latest,
     versionCount: allVersions.length,
     installScriptContent: installScripts.length > 0 ? installScripts.join(" ; ") : null,
+    lifecycleScriptValues,
     maintainers,
     keywords: latestMeta.keywords ?? [],
     bugs: typeof bugs === "string" ? bugs : bugs?.url ?? null,

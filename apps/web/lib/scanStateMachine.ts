@@ -29,6 +29,7 @@ export type ScanReport = {
   signals: RiskSignal[];
   finalRecommendation: "safe_to_review" | "use_with_caution" | "avoid_until_manual_review";
   confidence: number;
+  heuristCalled?: boolean;
   limitations: string[];
   methodology: string;
   metadata: {

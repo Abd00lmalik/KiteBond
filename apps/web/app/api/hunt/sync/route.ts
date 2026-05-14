@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { apiError } from "@/lib/apiError";
 import { HuntRegistryEthersABI } from "@/lib/contract";
-import { CONTRACT_CONFIG } from "@/lib/contractConfig";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -68,8 +67,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (onChainId === undefined || !Number.isFinite(onChainId)) {
-      console.warn("[Hunt Sync] Could not parse HuntCreated event. Using txHash fallback.");
-      onChainId = -Math.floor(Math.random() * 1_000_000) - 1;
+      if (!body.txHash) {
+        return NextResponse.json({ success: false, synced: false, hunt: null, error: "txHash or onChainId is required for hunt sync." }, { status: 400 });
+      }
+      console.warn("[Hunt Sync] Event parse failed. Creating record with txHash as key.");
+      const syntheticId = parseInt(body.txHash.slice(2, 10), 16) * -1;
+      onChainId = syntheticId < 0 ? syntheticId : -1;
     }
 
     const hunt = await prisma.hunt.upsert({

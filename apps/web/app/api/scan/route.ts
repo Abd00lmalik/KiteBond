@@ -113,10 +113,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const riskScore = Math.max(signals.riskScore, heuristReport.riskScore);
+  const riskScore = heuristReport.heuristCalled
+    ? Math.max(signals.riskScore, Math.min(heuristReport.riskScore, signals.riskScore + 20))
+    : signals.riskScore;
   const riskLevel = scoreToSeverity(riskScore);
   const riskSignals: RiskSignal[] = signals.flags.map((flag) => ({
-    type: flag.code === "TYPOSQUAT_RISK" ? "typosquat" : flag.code === "INSTALL_SCRIPT" ? "install_script" : "metadata_signal",
+    type: flag.code === "TYPOSQUAT_RISK" ? "typosquat" : flag.code.includes("INSTALL_SCRIPT") ? "install_script" : "metadata_signal",
     severity: flag.severity === "info" ? "low" : severityToRiskLevel(flag.severity),
     evidence: flag.message,
     recommendation: recommendationForFlag(flag.code)
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
     finalRecommendation:
       riskScore > 60 ? "avoid_until_manual_review" : riskScore >= 30 ? "use_with_caution" : "safe_to_review",
     confidence: heuristReport.heuristCalled ? 0.74 : 0.54,
+    heuristCalled: heuristReport.heuristCalled,
     limitations: heuristReport.heuristCalled ? [] : ["Heurist unavailable; deterministic fallback report returned."],
     methodology: heuristReport.heuristCalled
       ? "npm registry metadata, deterministic signal extraction, and Heurist chat-completions analysis"
@@ -207,15 +210,17 @@ function severityToRiskLevel(severity: "critical" | "high" | "medium" | "low" | 
 }
 
 function scoreToSeverity(score: number): Severity {
-  if (score >= 70) return "critical";
-  if (score >= 45) return "high";
-  if (score >= 20) return "medium";
-  return "low";
+  if (score >= 80) return "critical";
+  if (score >= 60) return "high";
+  if (score >= 35) return "medium";
+  if (score >= 15) return "low";
+  return "clean";
 }
 
 function recommendationForFlag(code: string) {
   if (code === "TYPOSQUAT_RISK") return "Verify package identity before install and compare against the known package.";
-  if (code === "INSTALL_SCRIPT") return "Review lifecycle scripts manually before installing this package.";
+  if (code === "MALICIOUS_INSTALL_SCRIPT") return "Do not install until the lifecycle script is manually reviewed and verified benign.";
+  if (code === "HAS_INSTALL_SCRIPT") return "Review lifecycle scripts manually before installing this package in sensitive environments.";
   if (code === "NO_REPOSITORY") return "Treat source provenance as weak until repository ownership is verified.";
   if (code === "NO_LICENSE") return "Confirm legal usage terms before adopting this dependency.";
   return "Review this metadata signal before using the package in production.";

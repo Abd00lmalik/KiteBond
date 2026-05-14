@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 type BadgeTone =
   | "safe"
+  | "clean"
   | "low"
   | "medium"
   | "warning"
@@ -19,6 +20,7 @@ type BadgeTone =
 
 const tones: Record<BadgeTone, string> = {
   safe: "border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] text-[var(--cyber-green)]",
+  clean: "border-[var(--cyber-blue)] bg-[var(--cyber-blue-ghost)] text-[var(--cyber-blue)]",
   low: "border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] text-[var(--cyber-green)]",
   medium: "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]",
   warning: "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]",

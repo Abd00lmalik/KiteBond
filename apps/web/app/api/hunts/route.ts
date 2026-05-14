@@ -9,10 +9,13 @@ export async function GET(req: NextRequest) {
   try {
     const status = req.nextUrl.searchParams.get("status");
     const creator = req.nextUrl.searchParams.get("creator");
+    const statusFilter = status && status !== "All"
+      ? Array.from(new Set([status, status.toLowerCase(), status.charAt(0).toUpperCase() + status.slice(1)]))
+      : null;
 
     const hunts = await prisma.hunt.findMany({
       where: {
-        ...(status && status !== "All" ? { status } : {}),
+        ...(statusFilter ? { status: { in: statusFilter } } : {}),
         ...(creator ? { creatorAddress: creator } : {})
       },
       include: { submissions: true },
@@ -56,8 +59,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing onChainId", code: "HUNT_INPUT_REQUIRED" }, { status: 400 });
     }
 
+    let hunt;
     try {
-      const hunt = await prisma.hunt.upsert({
+      hunt = await prisma.hunt.upsert({
         where: { onChainId },
         update: {
           chainId: 2368,
@@ -95,22 +99,6 @@ export async function POST(req: NextRequest) {
           status: "Open"
         }
       });
-
-      await prisma.userUsage.upsert({
-        where: { walletAddress: body.creatorAddress! },
-        update: { huntCount: { increment: 1 } },
-        create: { walletAddress: body.creatorAddress!, address: body.creatorAddress!, huntCount: 1 }
-      });
-
-      return NextResponse.json({
-        success: true,
-        onChainSuccess: true,
-        dbSaved: true,
-        txHash: body.createdTx,
-        onChainId: String(onChainId),
-        message: "Hunt created and indexed successfully.",
-        data: hunt
-      });
     } catch (error) {
       const dbError = error instanceof Error ? error.message : "Unknown DB error";
       console.error("[Hunt] DB save failed after on-chain success:", dbError);
@@ -124,6 +112,26 @@ export async function POST(req: NextRequest) {
         message: "Hunt confirmed on-chain. Indexing failed - use Sync Hunt to retry."
       });
     }
+
+    try {
+      await prisma.userUsage.upsert({
+        where: { walletAddress: body.creatorAddress! },
+        update: { huntCount: { increment: 1 } },
+        create: { walletAddress: body.creatorAddress!, address: body.creatorAddress!, huntCount: 1 }
+      });
+    } catch (error) {
+      console.error("[Hunt] Usage counter update failed (non-fatal):", error instanceof Error ? error.message : error);
+    }
+
+    return NextResponse.json({
+      success: true,
+      onChainSuccess: true,
+      dbSaved: true,
+      txHash: body.createdTx,
+      onChainId: String(onChainId),
+      message: "Hunt created and indexed successfully.",
+      data: hunt
+    });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Failed to create hunt";
     return apiError("Hunt creation failed. Please try again.", 500, detail);

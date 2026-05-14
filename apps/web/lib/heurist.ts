@@ -28,6 +28,14 @@ interface AnalysisInput {
   signalScore: number;
 }
 
+function scoreToReportSeverity(score: number): HeuristScanReport["severity"] {
+  if (score >= 80) return "critical";
+  if (score >= 60) return "high";
+  if (score >= 35) return "medium";
+  if (score >= 15) return "low";
+  return "clean";
+}
+
 export interface HeuristAnalysis {
   packageName: string;
   version: string;
@@ -51,13 +59,17 @@ export async function analyzePackageWithHeurist(
   packageName: string,
   input: AnalysisInput
 ): Promise<HeuristScanReport> {
-  const apiKey = process.env.HEURIST_API_KEY;
-  console.log("[Heurist] Key:", apiKey ? `SET (${apiKey.length} chars)` : "NOT SET");
-  console.log("[Heurist] Model:", HEURIST_MODEL);
-  console.log("[Heurist] Package:", packageName);
+  const apiKey = process.env.HEURIST_API_KEY?.trim();
+  const keyStatus = apiKey ? `SET (len=${apiKey.length}, prefix=${apiKey.slice(0, 8)}...)` : "NOT SET";
+  console.log("[Heurist] ==========================================");
+  console.log("[Heurist] analyzePackageWithHeurist called");
+  console.log(`[Heurist] Package: ${packageName}`);
+  console.log(`[Heurist] Key status: ${keyStatus}`);
+  console.log(`[Heurist] Model: ${HEURIST_MODEL}`);
+  console.log("[Heurist] ==========================================");
 
-  if (!apiKey || apiKey.trim() === "") {
-    console.warn("[Heurist] HEURIST_API_KEY is not set. Using deterministic fallback.");
+  if (!apiKey) {
+    console.warn("[Heurist] NO KEY - using deterministic fallback. Set HEURIST_API_KEY in Vercel.");
     return buildFallback(packageName, input, false);
   }
 
@@ -78,7 +90,14 @@ export async function analyzePackageWithHeurist(
     "  high     = strong suspicious signals, very new/unknown package with anomalies",
     "  medium   = notable risk factors, missing repo/license, low adoption",
     "  low      = minor concerns, single maintainer, slight name similarity",
-    "  clean    = no significant risk factors found"
+    "  clean    = no significant risk factors found",
+    "",
+    "IMPORTANT: For well-established packages with millions of weekly downloads (lodash, react, express, axios, etc.),",
+    "your analysis should reflect their reputation and track record. Do not flag them as high risk purely due to",
+    "automated signals like single maintainer if they have years of open development history.",
+    "Your severity rating must be calibrated to real-world risk, not just signal counts.",
+    "A package with 50M weekly downloads and 10 years of history is not high risk without specific evidence of",
+    "compromise, typosquatting, or malicious behavior."
   ].join("\n");
 
   const userPrompt = [
@@ -125,10 +144,11 @@ export async function analyzePackageWithHeurist(
     });
 
     clearTimeout(timeout);
+    console.log(`[Heurist] HTTP response status: ${res.status}`);
 
     if (!res.ok) {
       const errBody = await res.text();
-      console.error("[Heurist] API returned non-OK:", res.status, errBody.slice(0, 300));
+      console.error(`[Heurist] Error body: ${errBody.slice(0, 500)}`);
       return buildFallback(packageName, input, false);
     }
 
@@ -173,8 +193,7 @@ export async function analyzePackageWithHeurist(
 
 function buildFallback(packageName: string, input: AnalysisInput, heuristCalled: boolean): HeuristScanReport {
   const score = input.signalScore;
-  const severity: HeuristScanReport["severity"] =
-    score >= 70 ? "high" : score >= 45 ? "medium" : score >= 20 ? "low" : "clean";
+  const severity = scoreToReportSeverity(score);
 
   return {
     severity,
@@ -279,8 +298,9 @@ function toHeuristAnalysis(meta: NpmPackageMeta, existingSignals: RiskSignal[], 
 }
 
 function scoreToSeverity(score: number): Severity {
-  if (score >= 70) return "critical";
-  if (score >= 45) return "high";
-  if (score >= 20) return "medium";
-  return "low";
+  if (score >= 80) return "critical";
+  if (score >= 60) return "high";
+  if (score >= 35) return "medium";
+  if (score >= 15) return "low";
+  return "clean";
 }

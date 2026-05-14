@@ -34,6 +34,7 @@ type ScanResult = {
 const prices: Record<ScanDepth, string> = { quick: "0", standard: "1", deep: "3" };
 
 const riskColors: Record<Severity, { bg: string; border: string; text: string }> = {
+  clean: { bg: "rgba(0,180,255,0.08)", border: "rgba(0,180,255,0.25)", text: "#00b4ff" },
   low: { bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.25)", text: "#22c55e" },
   medium: { bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.25)", text: "#f59e0b" },
   high: { bg: "rgba(251,146,60,0.08)", border: "rgba(251,146,60,0.25)", text: "#fb923c" },
@@ -207,6 +208,14 @@ export default function InstantScanPage() {
     }
   }
 
+  function resetScan() {
+    dispatch({ type: "RESET" });
+    setStage("idle");
+    setFailedStep(undefined);
+    setPackageName("");
+    setVersion("latest");
+  }
+
   return (
     <AppShell>
       <PageGlow color="green" position="top-left" />
@@ -352,6 +361,13 @@ export default function InstantScanPage() {
                 </div>
                 <Badge tone={result.report.riskLevel} label={result.report.riskLevel} />
               </div>
+              <div className="mt-3">
+                {result.report.heuristCalled ? (
+                  <span className="font-mono text-xs text-[var(--cyber-green)]">AI: Heurist Llama-3.3-70B</span>
+                ) : (
+                  <span className="font-mono text-xs text-[var(--text-dim)]">Signal analysis only</span>
+                )}
+              </div>
 
               <div className="mt-6 grid gap-5 md:grid-cols-[160px_1fr]">
                 <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] p-5 text-center">
@@ -435,6 +451,13 @@ export default function InstantScanPage() {
               >
                 Investigate further with Agent Hunt <ArrowRight className="h-4 w-4" />
               </Link>
+              <button
+                type="button"
+                onClick={resetScan}
+                className="mt-5 ml-3 inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-default)] px-4 py-3 text-sm font-semibold text-[var(--text-secondary)]"
+              >
+                Scan Another Package
+              </button>
             </Card>
           )}
         </div>

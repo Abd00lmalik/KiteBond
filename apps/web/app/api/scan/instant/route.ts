@@ -11,7 +11,7 @@ import { fetchNpmMeta } from "@/lib/npm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 40;
 
 type ScanDepth = "quick" | "standard" | "deep";
 
@@ -72,7 +72,8 @@ export async function POST(req: NextRequest) {
     }
 
     const signals = [...deterministicSignals, ...heuristResult.signals];
-    const riskScore = Math.max(computeRiskScore(signals), heuristResult.riskScore);
+    const deterministicScore = computeRiskScore(signals);
+    const riskScore = Math.max(deterministicScore, Math.min(heuristResult.riskScore, deterministicScore + 20));
     const riskLevel = computeRiskLevel(riskScore);
 
     const report = {

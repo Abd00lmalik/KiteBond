@@ -1,6 +1,6 @@
 import type { NpmPackageMeta } from "./npm";
 
-export type Severity = "low" | "medium" | "high" | "critical";
+export type Severity = "clean" | "low" | "medium" | "high" | "critical";
 
 export interface RiskSignal {
   type:
@@ -45,24 +45,13 @@ const POPULAR_PACKAGES = [
   "winston"
 ];
 
-const SUSPICIOUS_SCRIPT_PATTERNS = [
-  "curl",
-  "wget",
-  "exec",
-  "spawn",
-  "eval",
-  "base64",
-  "atob",
-  "btoa",
-  "process.env",
-  "child_process",
-  "net.connect",
-  "http.get",
-  "https.get",
-  "os.platform",
-  "fs.write",
-  "require(\"child_process\")",
-  "require('child_process')"
+const MALWARE_SCRIPT_PATTERNS = [
+  /\bcurl\b.*\|.*\bsh\b/i,
+  /\bwget\b.*\|.*\bsh\b/i,
+  /\beval\s*\(.*atob/i,
+  /\beval\s*\(.*Buffer.*base64/i,
+  /require\s*\(\s*['"]child_process['"].*exec/i,
+  /\bbase64\b.*\|\s*\bbash\b/i
 ];
 
 function levenshtein(a: string, b: string): number {
@@ -84,19 +73,28 @@ function levenshtein(a: string, b: string): number {
 
 export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
   const signals: RiskSignal[] = [];
+  const isPopular = POPULAR_PACKAGES.includes(meta.name.toLowerCase());
 
   if (meta.hasInstallScript) {
     const content = meta.installScriptContent ?? "";
-    const lowered = content.toLowerCase();
-    const hasSuspicious = SUSPICIOUS_SCRIPT_PATTERNS.some((pattern) => lowered.includes(pattern));
-    signals.push({
-      type: "install_script",
-      severity: hasSuspicious ? "critical" : "high",
-      evidence: `Package has lifecycle scripts: ${content.slice(0, 200)}`,
-      recommendation: hasSuspicious
-        ? "Package runs code during installation with suspicious patterns. Do not install without manual review."
-        : "Package runs scripts during installation. Review the script content before installing."
-    });
+    const hasMalwarePattern = (meta.lifecycleScriptValues ?? []).some((script) =>
+      MALWARE_SCRIPT_PATTERNS.some((pattern) => pattern.test(script))
+    );
+    if (hasMalwarePattern) {
+      signals.push({
+        type: "install_script",
+        severity: "critical",
+        evidence: `Package lifecycle script matches known malware patterns: ${content.slice(0, 200)}`,
+        recommendation: "Package runs suspicious code during installation. Do not install without manual review."
+      });
+    } else {
+      signals.push({
+        type: "install_script",
+        severity: "low",
+        evidence: `Package has lifecycle scripts: ${content.slice(0, 200)}`,
+        recommendation: "Package runs scripts during installation. Review the script content before installing in sensitive environments."
+      });
+    }
   }
 
   const normalizedName = meta.name.toLowerCase().replace(/[-_]/g, "");
@@ -162,6 +160,22 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
     }
   }
 
+  if (!isPopular && meta.weeklyDownloads === 0) {
+    signals.push({
+      type: "metadata_signal",
+      severity: "high",
+      evidence: "Package has zero recorded weekly downloads.",
+      recommendation: "Avoid until adoption and provenance can be verified."
+    });
+  } else if (!isPopular && meta.weeklyDownloads < 1000) {
+    signals.push({
+      type: "metadata_signal",
+      severity: meta.weeklyDownloads < 100 ? "high" : "medium",
+      evidence: `Package has ${meta.weeklyDownloads.toLocaleString()} weekly downloads.`,
+      recommendation: "Low-adoption packages need extra provenance checks."
+    });
+  }
+
   if (meta.versionCount === 1) {
     signals.push({
       type: "version_signal",
@@ -189,17 +203,18 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
     });
   }
 
-  return signals;
+  return isPopular ? signals.filter((signal) => signal.severity === "critical" || signal.severity === "high") : signals;
 }
 
 export function computeRiskScore(signals: RiskSignal[]): number {
-  const weights: Record<Severity, number> = { critical: 35, high: 20, medium: 10, low: 3 };
+  const weights: Record<Severity, number> = { clean: 0, critical: 35, high: 20, medium: 10, low: 3 };
   return Math.min(100, signals.reduce((sum, signal) => sum + weights[signal.severity], 0));
 }
 
 export function computeRiskLevel(score: number): Severity {
-  if (score >= 70) return "critical";
-  if (score >= 45) return "high";
-  if (score >= 20) return "medium";
-  return "low";
+  if (score >= 80) return "critical";
+  if (score >= 60) return "high";
+  if (score >= 35) return "medium";
+  if (score >= 15) return "low";
+  return "clean";
 }

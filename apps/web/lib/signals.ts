@@ -110,13 +110,72 @@ const KNOWN_POPULAR = new Set([
   "yargs",
   "zod"
 ]);
-const DANGEROUS_SCRIPT_KEYWORDS = ["curl ", "wget ", "base64", "eval(", "exec(", "spawn(", "child_process", "http://", "https://"];
+const TOP_PACKAGES = new Set([
+  "lodash",
+  "react",
+  "react-dom",
+  "express",
+  "axios",
+  "typescript",
+  "webpack",
+  "babel-core",
+  "@babel/core",
+  "eslint",
+  "jest",
+  "mocha",
+  "moment",
+  "chalk",
+  "commander",
+  "dotenv",
+  "uuid",
+  "underscore",
+  "ramda",
+  "async",
+  "bluebird",
+  "request",
+  "cheerio",
+  "mongoose",
+  "sequelize",
+  "next",
+  "vue",
+  "angular",
+  "@angular/core",
+  "jquery",
+  "rxjs",
+  "redux",
+  "mobx",
+  "tailwindcss",
+  "postcss",
+  "sass",
+  "vite",
+  "rollup",
+  "esbuild",
+  "prettier",
+  "husky",
+  "nodemon",
+  "pm2",
+  "cors",
+  "helmet",
+  "passport",
+  "jsonwebtoken",
+  "bcrypt"
+]);
+const MALWARE_SCRIPT_PATTERNS = [
+  /\bcurl\b.*\|.*\bsh\b/i,
+  /\bwget\b.*\|.*\bsh\b/i,
+  /\beval\s*\(.*atob/i,
+  /\beval\s*\(.*Buffer.*base64/i,
+  /require\s*\(\s*['"]child_process['"].*exec/i,
+  /\bbase64\b.*\|\s*\bbash\b/i
+];
 
 export function extractSignals(meta: NpmPackageMeta, packageInput: string): SecuritySignals {
   const flags: SecurityFlag[] = [];
   let score = 0;
 
   const inputLower = packageInput.trim().toLowerCase();
+  const nameLower = meta.name.toLowerCase();
+  const isTopPackage = TOP_PACKAGES.has(inputLower) || TOP_PACKAGES.has(nameLower);
   for (const known of KNOWN_POPULAR) {
     const distance = levenshtein(inputLower, known);
     if (inputLower !== known && distance <= 2) {
@@ -147,41 +206,52 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     score += 12;
   }
 
-  if (meta.hasInstallScript) {
+  const lifecycleScripts = meta.lifecycleScriptValues ?? [];
+  const maliciousScripts = lifecycleScripts.filter((script) => MALWARE_SCRIPT_PATTERNS.some((pattern) => pattern.test(script)));
+  if (maliciousScripts.length > 0) {
     flags.push({
-      code: "INSTALL_SCRIPT",
-      severity: "high",
-      message: "Package contains install/postinstall scripts that execute at npm install time. This is a common malware vector."
-    });
-    score += 30;
-  }
-
-  const suspiciousScripts = (meta.scriptValues ?? []).filter((script) =>
-    DANGEROUS_SCRIPT_KEYWORDS.some((keyword) => script.includes(keyword))
-  );
-  if (suspiciousScripts.length > 0) {
-    flags.push({
-      code: "SUSPICIOUS_SCRIPT_CONTENT",
+      code: "MALICIOUS_INSTALL_SCRIPT",
       severity: "critical",
-      message: `Package script content contains suspicious keywords (${suspiciousScripts.length} match(es)). Manual inspection required before install.`
+      message: "Install lifecycle script matches known malware patterns. Inspect before install."
     });
     score += 40;
+  } else if (lifecycleScripts.length > 0) {
+    flags.push({
+      code: "HAS_INSTALL_SCRIPT",
+      severity: "low",
+      message: "Package has install lifecycle script(s). Review script content before installing in sensitive environments."
+    });
+    score += 8;
   }
 
-  if (meta.weeklyDownloads < 500) {
+  if (!isTopPackage && meta.weeklyDownloads === 0) {
+    flags.push({
+      code: "NO_DOWNLOADS",
+      severity: "high",
+      message: "Package has zero recorded downloads."
+    });
+    score += 25;
+  } else if (!isTopPackage && meta.weeklyDownloads < 100) {
+    flags.push({
+      code: "VERY_LOW_DOWNLOADS",
+      severity: "high",
+      message: `Only ${meta.weeklyDownloads} weekly downloads. Extremely low adoption.`
+    });
+    score += 20;
+  } else if (!isTopPackage && meta.weeklyDownloads < 1000) {
     flags.push({
       code: "LOW_DOWNLOADS",
       severity: "medium",
-      message: `Only ${meta.weeklyDownloads.toLocaleString()} weekly downloads. Minimal community vetting.`
+      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads. Low community adoption.`
     });
     score += 12;
-  } else if (meta.weeklyDownloads < 5000) {
+  } else if (!isTopPackage && meta.weeklyDownloads < 10_000) {
     flags.push({
       code: "MODERATE_DOWNLOADS",
       severity: "low",
-      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads - low-to-moderate adoption.`
+      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads - moderate adoption.`
     });
-    score += 5;
+    score += 4;
   }
 
   const firstDate = meta.firstPublishedAt ? new Date(meta.firstPublishedAt) : null;
@@ -243,6 +313,12 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
       message: "Package has no meaningful description. May indicate a placeholder or test package."
     });
     score += 6;
+  }
+
+  if (isTopPackage) {
+    score = Math.max(0, score - 25);
+    const filteredFlags = flags.filter((flag) => flag.severity === "critical" || flag.severity === "high");
+    return { riskScore: Math.min(100, score), flags: filteredFlags };
   }
 
   return { riskScore: Math.min(100, score), flags };
