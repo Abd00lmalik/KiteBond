@@ -2,11 +2,7 @@ import type { RiskSignal, Severity } from "./heuristics";
 import type { NpmPackageMeta } from "./npm";
 
 const HEURIST_BASE = "https://llm-gateway.heurist.xyz";
-const HEURIST_MODELS = [
-  process.env.HEURIST_MODEL || "mistralai/mixtral-8x7b-instruct",
-  "meta-llama/llama-3.3-70b-instruct",
-  "meta-llama/llama-3-70b-instruct"
-];
+const HEURIST_MODEL = "meta-llama/llama-3.3-70b-instruct";
 
 export interface HeuristScanReport {
   severity: "critical" | "high" | "medium" | "low" | "clean";
@@ -56,7 +52,9 @@ export async function analyzePackageWithHeurist(
   input: AnalysisInput
 ): Promise<HeuristScanReport> {
   const apiKey = process.env.HEURIST_API_KEY;
-  console.log("[Heurist] Key status:", apiKey ? `SET (${apiKey.length} chars)` : "NOT SET - using fallback");
+  console.log("[Heurist] Key:", apiKey ? `SET (${apiKey.length} chars)` : "NOT SET");
+  console.log("[Heurist] Model:", HEURIST_MODEL);
+  console.log("[Heurist] Package:", packageName);
 
   if (!apiKey || apiKey.trim() === "") {
     console.warn("[Heurist] HEURIST_API_KEY is not set. Using deterministic fallback.");
@@ -101,88 +99,76 @@ export async function analyzePackageWithHeurist(
     "Provide your security assessment as JSON only."
   ].join("\n");
 
-  const models = Array.from(new Set(HEURIST_MODELS.map((model) => model.trim()).filter(Boolean)));
-  let lastFailure = "No Heurist model attempted.";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 35_000);
 
-  for (const model of models) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 28_000);
+  try {
+    console.log("[Heurist] Calling API. Model:", HEURIST_MODEL, "Package:", packageName);
 
-    try {
-      console.log("[Heurist] Calling API. Model:", model, "Package:", packageName);
+    const res = await fetch(`${HEURIST_BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey.trim()}`
+      },
+      body: JSON.stringify({
+        model: HEURIST_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        max_tokens: 700,
+        temperature: 0.1,
+        stream: false
+      }),
+      signal: controller.signal
+    });
 
-      const res = await fetch(`${HEURIST_BASE}/v1/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey.trim()}`
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ],
-          max_tokens: 700,
-          temperature: 0.1,
-          stream: false
-        }),
-        signal: controller.signal
-      });
+    clearTimeout(timeout);
 
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errBody = await res.text();
-        lastFailure = `Model ${model} returned ${res.status}: ${errBody.slice(0, 160)}`;
-        console.error("[Heurist] API returned non-OK:", res.status, errBody.slice(0, 300));
-        continue;
-      }
-
-      const data = (await res.json()) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
-      console.log("[Heurist] Raw response received. Finish reason:", data?.choices?.[0]?.finish_reason);
-
-      const raw = data?.choices?.[0]?.message?.content ?? "";
-      const cleaned = raw.replace(/```json|```/gi, "").trim();
-
-      let parsed: Omit<HeuristScanReport, "heuristCalled">;
-      try {
-        parsed = JSON.parse(cleaned) as Omit<HeuristScanReport, "heuristCalled">;
-      } catch {
-        lastFailure = `Model ${model} returned invalid JSON.`;
-        console.error("[Heurist] JSON parse failed. Raw (first 300):", cleaned.slice(0, 300));
-        continue;
-      }
-
-      const validSeverities = ["critical", "high", "medium", "low", "clean"];
-      if (
-        !validSeverities.includes(parsed.severity) ||
-        typeof parsed.summary !== "string" ||
-        parsed.summary.length < 30 ||
-        !Array.isArray(parsed.details) ||
-        typeof parsed.riskScore !== "number"
-      ) {
-        lastFailure = `Model ${model} failed response validation.`;
-        console.error("[Heurist] Response failed validation:", parsed);
-        continue;
-      }
-
-      console.log("[Heurist] Success. Model:", model, "Severity:", parsed.severity, "Score:", parsed.riskScore);
-      return { ...parsed, heuristCalled: true };
-    } catch (err: unknown) {
-      clearTimeout(timeout);
-      if (err instanceof Error && err.name === "AbortError") {
-        lastFailure = `Model ${model} timed out after 28s.`;
-        console.error("[Heurist] Request timed out after 28s.");
-      } else {
-        lastFailure = err instanceof Error ? err.message : String(err);
-        console.error("[Heurist] Unexpected error:", err);
-      }
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[Heurist] API returned non-OK:", res.status, errBody.slice(0, 300));
+      return buildFallback(packageName, input, false);
     }
-  }
 
-  console.error("[Heurist] All model attempts failed:", lastFailure);
-  return buildFallback(packageName, input, false);
+    const data = (await res.json()) as { choices?: Array<{ finish_reason?: string; message?: { content?: string } }> };
+    console.log("[Heurist] Raw response received. Finish reason:", data?.choices?.[0]?.finish_reason);
+
+    const raw = data?.choices?.[0]?.message?.content ?? "";
+    const cleaned = raw.replace(/```json|```/gi, "").trim();
+
+    let parsed: Omit<HeuristScanReport, "heuristCalled">;
+    try {
+      parsed = JSON.parse(cleaned) as Omit<HeuristScanReport, "heuristCalled">;
+    } catch {
+      console.error("[Heurist] JSON parse failed. Raw (first 300):", cleaned.slice(0, 300));
+      return buildFallback(packageName, input, false);
+    }
+
+    const validSeverities = ["critical", "high", "medium", "low", "clean"];
+    if (
+      !validSeverities.includes(parsed.severity) ||
+      typeof parsed.summary !== "string" ||
+      parsed.summary.length < 30 ||
+      !Array.isArray(parsed.details) ||
+      typeof parsed.riskScore !== "number"
+    ) {
+      console.error("[Heurist] Response failed validation:", parsed);
+      return buildFallback(packageName, input, false);
+    }
+
+    console.log("[Heurist] Success. Model:", HEURIST_MODEL, "Severity:", parsed.severity, "Score:", parsed.riskScore);
+    return { ...parsed, heuristCalled: true };
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === "AbortError") {
+      console.error("[Heurist] Request timed out after 35s.");
+    } else {
+      console.error("[Heurist] Unexpected error:", err);
+    }
+    return buildFallback(packageName, input, false);
+  }
 }
 
 function buildFallback(packageName: string, input: AnalysisInput, heuristCalled: boolean): HeuristScanReport {

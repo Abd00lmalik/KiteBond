@@ -12,20 +12,105 @@ export interface SecurityFlag {
 }
 
 const KNOWN_POPULAR = new Set([
-  "lodash",
-  "react",
-  "express",
+  "@babel/core",
+  "@babel/preset-env",
+  "@babel/runtime",
+  "@emotion/react",
+  "@emotion/styled",
+  "@testing-library/react",
+  "@types/node",
+  "@types/react",
+  "@vitejs/plugin-react",
+  "acorn",
+  "ajv",
+  "ansi-styles",
+  "ansi-regex",
+  "async",
+  "autoprefixer",
   "axios",
-  "typescript",
-  "webpack",
   "babel-core",
-  "moment",
-  "underscore",
+  "body-parser",
   "chalk",
+  "classnames",
   "commander",
+  "cookie",
+  "cors",
+  "cross-env",
+  "css-loader",
+  "date-fns",
+  "debug",
+  "deepmerge",
   "dotenv",
-  "uuid"
+  "eslint",
+  "eslint-plugin-react",
+  "express",
+  "fast-glob",
+  "file-loader",
+  "formik",
+  "fs-extra",
+  "glob",
+  "graceful-fs",
+  "helmet",
+  "html-webpack-plugin",
+  "inquirer",
+  "isarray",
+  "jquery",
+  "jest",
+  "js-yaml",
+  "json5",
+  "jsonfile",
+  "jsonwebtoken",
+  "less",
+  "lodash",
+  "mongoose",
+  "minimist",
+  "mkdirp",
+  "moment",
+  "ms",
+  "next",
+  "node-fetch",
+  "nodemon",
+  "normalize-path",
+  "npm",
+  "parse-json",
+  "passport",
+  "postcss",
+  "prettier",
+  "prop-types",
+  "react",
+  "react-dom",
+  "react-is",
+  "react-router",
+  "react-router-dom",
+  "redux",
+  "resolve",
+  "rimraf",
+  "rollup",
+  "rxjs",
+  "sass",
+  "semver",
+  "sequelize",
+  "source-map",
+  "style-loader",
+  "strip-ansi",
+  "styled-components",
+  "tailwindcss",
+  "ts-node",
+  "tslib",
+  "typescript",
+  "underscore",
+  "url-loader",
+  "uuid",
+  "vite",
+  "vue",
+  "vue-router",
+  "webpack",
+  "webpack-cli",
+  "ws",
+  "yargs",
+  "zod"
 ]);
+const DANGEROUS_SCRIPT_KEYWORDS = ["curl ", "wget ", "base64", "eval(", "exec(", "spawn(", "child_process", "http://", "https://"];
 
 export function extractSignals(meta: NpmPackageMeta, packageInput: string): SecuritySignals {
   const flags: SecurityFlag[] = [];
@@ -69,6 +154,18 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
       message: "Package contains install/postinstall scripts that execute at npm install time. This is a common malware vector."
     });
     score += 30;
+  }
+
+  const suspiciousScripts = (meta.scriptValues ?? []).filter((script) =>
+    DANGEROUS_SCRIPT_KEYWORDS.some((keyword) => script.includes(keyword))
+  );
+  if (suspiciousScripts.length > 0) {
+    flags.push({
+      code: "SUSPICIOUS_SCRIPT_CONTENT",
+      severity: "critical",
+      message: `Package script content contains suspicious keywords (${suspiciousScripts.length} match(es)). Manual inspection required before install.`
+    });
+    score += 40;
   }
 
   if (meta.weeklyDownloads < 500) {

@@ -10,7 +10,7 @@ import { extractSignals } from "@/lib/signals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 40;
 
 type ScanStage = "auth" | "resolve" | "analyze" | "save";
 
@@ -31,9 +31,7 @@ export async function POST(req: NextRequest) {
   if (rawPackageName.length > 214) return apiError("Package name too long.", 400);
   if (/[\/\\<>]/.test(rawPackageName)) return apiError("Invalid package name characters.", 400);
 
-  const packageName = rawPackageName.startsWith("@")
-    ? rawPackageName
-    : rawPackageName.split("@")[0];
+  const packageName = rawPackageName.split("@")[0] || rawPackageName;
   if (!packageName) return apiError("Package name is required.", 400);
 
   const address = (body.address ?? body.walletAddress ?? "").trim().toLowerCase() || "anonymous";
@@ -72,16 +70,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
-    console.error("[Scan] Authorization DB error:", detail);
-    return NextResponse.json(
-      {
-        success: false,
-        stage: "auth",
-        error: "Database error during authorization. Please try again.",
-        ...(process.env.NODE_ENV === "development" ? { detail } : {})
-      },
-      { status: 500 }
-    );
+    console.error("[Scan][Auth] userUsage upsert failed (non-fatal):", detail);
   }
 
   let meta;

@@ -7,7 +7,7 @@ import { ArrowRight, Copy, Loader2, ReceiptText, ShieldCheck } from "lucide-reac
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
-import { CompactScanStatus, type CompactStage } from "@/components/app/CompactScanStatus";
+import { CompactScanStatus, type CompactStage, type CompactStepKey } from "@/components/app/CompactScanStatus";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
@@ -51,6 +51,7 @@ export default function InstantScanPage() {
   const [scanDepth, setScanDepth] = useState<ScanDepth>("quick");
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
   const [stage, setStage] = useState<CompactStage>("idle");
+  const [failedStep, setFailedStep] = useState<CompactStepKey | undefined>();
 
   const busy = isScanBusy(context.state) || isApproving || isAuthorizing || isRecordingReceipt;
   const contractsReady = areContractsConfigured();
@@ -80,10 +81,12 @@ export default function InstantScanPage() {
 
     dispatch({ type: "START", payload: { packageName: pkg, version: resolvedVersion, scanDepth } });
     setStage("authorizing");
+    setFailedStep(undefined);
 
     if (!pkg) {
       dispatch({ type: "ERROR", payload: { error: "Enter an npm package name." } });
       setStage("error");
+      setFailedStep("auth");
       toast.error("Enter an npm package name.");
       return;
     }
@@ -95,6 +98,7 @@ export default function InstantScanPage() {
     if (!isFree && (!isConnected || !address)) {
       dispatch({ type: "ERROR", payload: { error: "Connect your wallet first." } });
       setStage("error");
+      setFailedStep("auth");
       toast.error("Connect your wallet before paid scanning.");
       return;
     }
@@ -102,6 +106,7 @@ export default function InstantScanPage() {
     if (!isFree && !isCorrectNetwork) {
       dispatch({ type: "ERROR", payload: { error: "Switch to KiteAI Testnet before scanning." } });
       setStage("error");
+      setFailedStep("auth");
       toast.error("Switch to KiteAI Testnet.");
       return;
     }
@@ -111,6 +116,7 @@ export default function InstantScanPage() {
       const message = missing ? `Contracts not configured (${missing}).` : "Contracts not configured.";
       dispatch({ type: "ERROR", payload: { error: message } });
       setStage("error");
+      setFailedStep("auth");
       toast.error(message);
       return;
     }
@@ -171,11 +177,13 @@ export default function InstantScanPage() {
         }
       });
       setStage("complete");
+      setFailedStep(undefined);
       toast.success("Package scan complete.");
     } catch (error) {
       const message = getErrorMessage(error);
       dispatch({ type: "ERROR", payload: { error: message } });
       setStage("error");
+      setFailedStep(getFailedStep(error));
       toast.error(message);
     }
   }
@@ -299,7 +307,7 @@ export default function InstantScanPage() {
               {busy ? "Scan in progress" : "Run Scan"}
             </button>
 
-            <CompactScanStatus stage={stage} state={context.state} error={context.error} isFree={context.isFree} />
+            <CompactScanStatus stage={stage} state={context.state} error={context.error} isFree={context.isFree} failedStep={failedStep} />
           </Card>
 
           <Card className="p-5">
@@ -433,6 +441,21 @@ export default function InstantScanPage() {
       </div>
     </AppShell>
   );
+}
+
+function getFailedStep(err: unknown): CompactStepKey {
+  if (err instanceof ApiError && err.body) {
+    try {
+      const parsed = JSON.parse(err.body) as { stage?: string };
+      if (parsed.stage === "resolve") return "resolve";
+      if (parsed.stage === "analyze") return "analyze";
+      if (parsed.stage === "complete" || parsed.stage === "save") return "report";
+      return "auth";
+    } catch {
+      return "auth";
+    }
+  }
+  return "auth";
 }
 
 function getErrorMessage(err: unknown): string {

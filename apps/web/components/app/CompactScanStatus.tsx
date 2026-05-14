@@ -5,6 +5,7 @@ import type { ScanState } from "@/lib/scanStateMachine";
 
 type StepStatus = "pending" | "active" | "done" | "failed" | "skipped";
 export type CompactStage = "idle" | "authorizing" | "resolving" | "analyzing" | "anchoring" | "complete" | "error";
+export type CompactStepKey = "auth" | "resolve" | "analyze" | "report";
 
 const legacySteps = [
   {
@@ -55,11 +56,12 @@ const legacyLabels: Partial<Record<ScanState, string>> = {
 };
 
 const stageSteps = [
-  { key: "auth", label: "Authorization", active: "authorizing", doneWhen: ["resolving", "analyzing", "anchoring", "complete"] },
-  { key: "resolve", label: "Resolve Package", active: "resolving", doneWhen: ["analyzing", "anchoring", "complete"] },
-  { key: "analyze", label: "Heurist Analysis", active: "analyzing", doneWhen: ["anchoring", "complete"] },
-  { key: "report", label: "Report", active: "anchoring", doneWhen: ["complete"] }
+  { key: "auth", label: "Authorization", active: "authorizing" },
+  { key: "resolve", label: "Resolve Package", active: "resolving" },
+  { key: "analyze", label: "Heurist Analysis", active: "analyzing" },
+  { key: "report", label: "Report", active: "anchoring" }
 ] as const;
+const stageOrder = ["auth", "resolve", "analyze", "report", "complete"] as const;
 
 function indexOfLegacyState(state: ScanState) {
   return legacyStateOrder.indexOf(state);
@@ -96,14 +98,16 @@ export function CompactScanStatus({
   state,
   stage,
   error,
-  isFree
+  isFree,
+  failedStep
 }: {
   state?: ScanState;
   stage?: CompactStage;
   error?: string;
   isFree: boolean;
+  failedStep?: CompactStepKey;
 }) {
-  if (stage) return <StageScanStatus stage={stage} error={error} isFree={isFree} />;
+  if (stage) return <StageScanStatus stage={stage} error={error} failedStep={failedStep} />;
   if (!state || state === "idle") return null;
 
   const label = state === "failed" ? error || "Scan failed." : legacyLabels[state] || state;
@@ -133,7 +137,7 @@ export function CompactScanStatus({
   );
 }
 
-function StageScanStatus({ stage, error, isFree }: { stage: CompactStage; error?: string; isFree: boolean }) {
+function StageScanStatus({ stage, error, failedStep }: { stage: CompactStage; error?: string; failedStep?: CompactStepKey }) {
   if (stage === "idle") return null;
 
   const labelMap: Record<CompactStage, string> = {
@@ -151,22 +155,17 @@ function StageScanStatus({ stage, error, isFree }: { stage: CompactStage; error?
     <StatusShell label={labelMap[stage]} labelColor={labelColor} showPulse={stage !== "complete" && stage !== "error"}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         {stageSteps.map((step, index) => {
-          const skipped = step.key === "auth" && isFree && ["resolving", "analyzing", "anchoring", "complete"].includes(stage);
-          const failed = stage === "error";
-          const active = stage === step.active;
-          const done = (step.doneWhen as readonly string[]).includes(stage);
-          const color = failed
+          const status = getStageStepStatus(step.key, stage, failedStep);
+          const color = status === "failed"
             ? "var(--red)"
-            : skipped
-              ? "var(--text-muted)"
-              : done
+            : status === "done"
                 ? "var(--green)"
-                : active
+                : status === "active"
                   ? "var(--orange)"
                   : "var(--border-default)";
           return (
             <div key={step.key} style={{ display: "contents" }}>
-              <StepDot color={color} filled={done || active || failed} title={skipped ? `${step.label}: free scan, no payment required` : step.label} />
+              <StepDot color={color} filled={status !== "pending"} title={step.label} />
               {index < stageSteps.length - 1 && <Connector />}
             </div>
           );
@@ -174,14 +173,29 @@ function StageScanStatus({ stage, error, isFree }: { stage: CompactStage; error?
       </div>
       <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
         {stageSteps.map((step) => {
-          const active = stage === step.active;
-          const done = (step.doneWhen as readonly string[]).includes(stage);
-          const color = active ? "var(--orange)" : done ? "var(--green)" : "var(--text-muted)";
+          const status = getStageStepStatus(step.key, stage, failedStep);
+          const color =
+            status === "failed" ? "var(--red)" : status === "active" ? "var(--orange)" : status === "done" ? "var(--green)" : "var(--text-muted)";
           return <StepLabel key={step.key} label={step.label} color={color} />;
         })}
       </div>
     </StatusShell>
   );
+}
+
+function getStageStepStatus(stepKey: CompactStepKey, stage: CompactStage, failedStep?: CompactStepKey): StepStatus {
+  if (stage === "idle") return "pending";
+  if (stage === "complete") return "done";
+
+  const effectiveFailedStep = failedStep || "auth";
+  if (stage === "error") {
+    if (stepKey === effectiveFailedStep) return "failed";
+    return stageOrder.indexOf(stepKey) < stageOrder.indexOf(effectiveFailedStep) ? "done" : "pending";
+  }
+
+  const activeStep = stageSteps.find((step) => step.active === stage)?.key ?? "auth";
+  if (stepKey === activeStep) return "active";
+  return stageOrder.indexOf(stepKey) < stageOrder.indexOf(activeStep) ? "done" : "pending";
 }
 
 function StatusShell({

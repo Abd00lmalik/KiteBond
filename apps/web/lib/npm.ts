@@ -26,6 +26,7 @@ export interface NpmPackageMeta {
   deprecated: boolean;
   deprecationMessage: string | null;
   unpublished: boolean;
+  scriptValues: string[];
 }
 
 type NpmDocument = {
@@ -94,6 +95,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
   }
 
   const scripts = latestMeta.scripts ?? {};
+  const scriptValues = Object.values(scripts).filter((value): value is string => typeof value === "string");
   const installScripts = [scripts.preinstall, scripts.install, scripts.postinstall].filter(Boolean);
   const maintainers = reg.maintainers ?? [];
   const author =
@@ -138,6 +140,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
     engines: latestMeta.engines ?? null,
     deprecated: Boolean(latestMeta.deprecated),
     deprecationMessage: latestMeta.deprecated ?? null,
-    unpublished: Boolean(timeMap.unpublished)
+    unpublished: Boolean(timeMap.unpublished),
+    scriptValues
   };
 }
