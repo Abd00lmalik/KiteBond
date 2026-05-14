@@ -1,4 +1,5 @@
 import type { NpmPackageMeta } from "./npm";
+import { KNOWN_INCIDENTS } from "./knownIncidents";
 
 export type Severity = "clean" | "low" | "medium" | "high" | "critical";
 
@@ -74,6 +75,16 @@ function levenshtein(a: string, b: string): number {
 export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
   const signals: RiskSignal[] = [];
   const isPopular = POPULAR_PACKAGES.includes(meta.name.toLowerCase());
+  const incident = KNOWN_INCIDENTS[meta.name.toLowerCase()];
+
+  if (incident) {
+    signals.push({
+      type: "metadata_signal",
+      severity: incident.severity,
+      evidence: `${incident.summary}${incident.affectedVersions ? ` Affected: ${incident.affectedVersions}.` : ""} ${incident.recommendation}`,
+      recommendation: incident.recommendation
+    });
+  }
 
   if (meta.hasInstallScript) {
     const content = meta.installScriptContent ?? "";
@@ -102,7 +113,9 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
     const popularName = popular.toLowerCase().replace(/[-_]/g, "");
     if (normalizedName !== popularName && normalizedName.length > 2) {
       const distance = levenshtein(normalizedName, popularName);
-      if (distance <= 2) {
+      const lengthDelta = Math.abs(normalizedName.length - popularName.length);
+      const typosquatRisk = distance <= 1 || (distance === 2 && normalizedName.length <= 8 && popularName.length <= 8 && lengthDelta <= 1);
+      if (typosquatRisk) {
         signals.push({
           type: "typosquat",
           severity: distance === 1 ? "critical" : "high",
@@ -191,6 +204,15 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
       severity: "medium",
       evidence: "No maintainer information available.",
       recommendation: "Package ownership cannot be verified from registry metadata."
+    });
+  }
+
+  if (incident?.maintenanceConcern) {
+    signals.push({
+      type: "maintainer_signal",
+      severity: "medium",
+      evidence: incident.maintenanceConcern,
+      recommendation: incident.recommendation
     });
   }
 

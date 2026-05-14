@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 40;
 
-type ScanDepth = "quick" | "standard" | "deep";
+type ScanDepth = "instant" | "deep";
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const packageName = body.packageName?.trim();
     const version = body.version?.trim() || "latest";
-    const scanDepth = body.scanDepth || "quick";
+    const scanDepth = body.scanDepth || "instant";
     const walletAddress = body.walletAddress;
     const isAgentSubmission = body.isAgentSubmission === true;
 
@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
       (await prisma.userUsage.create({ data: { walletAddress, address: walletAddress } }));
 
     const price = getScanPrice(scanDepth);
-    const isFreeQuick = scanDepth === "quick" && usage.freeScansUsed < 1;
-    const paymentRequired = Number(price) > 0 && !isAgentSubmission;
+    const isFreeInstant = scanDepth === "instant" && usage.freeScansUsed < 1;
+    const paymentRequired = !isFreeInstant && Number(price) > 0 && !isAgentSubmission;
 
     if (paymentRequired && !body.paymentTxHash) {
       return NextResponse.json(
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       await prisma.userUsage.update({
         where: { walletAddress },
         data: {
-          freeScansUsed: isFreeQuick ? { increment: 1 } : undefined,
+          freeScansUsed: isFreeInstant ? { increment: 1 } : undefined,
           scanCount: { increment: 1 },
           totalScans: { increment: 1 },
           lastScanAt: new Date()
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
         onchainScanId,
         report,
         reportHash,
-        isFreeQuick,
+        isFreeInstant,
         price,
         proofAnchored: anchor.anchored,
         proofTx: anchor.txHash,
@@ -185,9 +185,8 @@ async function anchorScanProof(scanId: string, reportHash: string): Promise<{ an
 
 function getScanPrice(depth: string): string {
   const prices: Record<string, string> = {
-    quick: process.env.INSTANT_SCAN_QUICK_PRICE || "0",
-    standard: process.env.INSTANT_SCAN_STANDARD_PRICE || "1",
+    instant: process.env.INSTANT_SCAN_INSTANT_PRICE || "1",
     deep: process.env.INSTANT_SCAN_DEEP_PRICE || "3"
   };
-  return prices[depth] ?? "0";
+  return prices[depth] ?? "1";
 }

@@ -1,6 +1,6 @@
 import type { RiskSignal, Severity } from "./heuristics";
 
-export type ScanDepth = "quick" | "standard" | "deep";
+export type ScanDepth = "instant" | "deep";
 
 export type ScanState =
   | "idle"
@@ -83,8 +83,8 @@ export const initialScanState: ScanStateContext = {
   state: "idle",
   packageName: "",
   version: "latest",
-  scanDepth: "quick",
-  price: "0",
+  scanDepth: "instant",
+  price: "1",
   isFree: true
 };
 

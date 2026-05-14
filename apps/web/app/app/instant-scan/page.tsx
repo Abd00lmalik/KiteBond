@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import CountUp from "react-countup";
 import Link from "next/link";
 import { ArrowRight, Copy, Loader2, ReceiptText, ShieldCheck } from "lucide-react";
@@ -31,7 +31,7 @@ type ScanResult = {
   proofAnchored?: boolean;
 };
 
-const prices: Record<ScanDepth, string> = { quick: "0", standard: "1", deep: "3" };
+const prices: Record<ScanDepth, string> = { instant: "1", deep: "3" };
 
 const riskColors: Record<Severity, { bg: string; border: string; text: string }> = {
   clean: { bg: "rgba(0,180,255,0.08)", border: "rgba(0,180,255,0.25)", text: "#00b4ff" },
@@ -49,10 +49,14 @@ export default function InstantScanPage() {
   const { recordReceipt, isRecordingReceipt } = useRecordScanReceipt();
   const [packageName, setPackageName] = useState("lodash");
   const [version, setVersion] = useState("latest");
-  const [scanDepth, setScanDepth] = useState<ScanDepth>("quick");
+  const [scanDepth, setScanDepth] = useState<ScanDepth>("instant");
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
   const [stage, setStage] = useState<CompactStage>("idle");
   const [failedStep, setFailedStep] = useState<CompactStepKey | undefined>();
+  const [quota, setQuota] = useState<{ freeUsed: boolean; freeScansUsed: number; totalScans?: number }>({
+    freeUsed: false,
+    freeScansUsed: 0
+  });
 
   const busy = isScanBusy(context.state) || isApproving || isAuthorizing || isRecordingReceipt;
   const contractsReady = areContractsConfigured();
@@ -74,6 +78,29 @@ export default function InstantScanPage() {
       }
     : null;
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadQuota() {
+      if (!address) {
+        setQuota({ freeUsed: false, freeScansUsed: 0 });
+        return;
+      }
+      try {
+        const json = await safeFetch<{ freeUsed: boolean; freeScansUsed: number; totalScans?: number }>(
+          `/api/scan/quota?address=${encodeURIComponent(address)}`,
+          { cache: "no-store" }
+        );
+        if (!cancelled) setQuota(json);
+      } catch {
+        if (!cancelled) setQuota({ freeUsed: false, freeScansUsed: 0 });
+      }
+    }
+    void loadQuota();
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
   async function runScan() {
     if (busy) return;
 
@@ -92,8 +119,8 @@ export default function InstantScanPage() {
       return;
     }
 
-    const price = prices[scanDepth];
-    const isFree = Number(price) === 0;
+    const isFree = scanDepth === "instant" && !quota.freeUsed;
+    const price = isFree ? "0" : prices[scanDepth];
     dispatch({ type: "PRICE_CHECKED", payload: { isFree, price } });
 
     if (!isFree && (!isConnected || !address)) {
@@ -147,7 +174,8 @@ export default function InstantScanPage() {
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
-      const json = await safeFetch<{ success?: boolean; data?: ScanResult; error?: string }>("/api/scan", {
+      const endpoint = scanDepth === "deep" ? "/api/scan/deep" : "/api/scan";
+      const json = await safeFetch<{ success?: boolean; data?: ScanResult; error?: string }>(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -156,7 +184,9 @@ export default function InstantScanPage() {
           address,
           walletAddress: address,
           paymentTxHash: authTxHash,
-          onchainScanId
+          onchainScanId,
+          scanType: scanDepth,
+          scanDepth
         })
       });
       if (!json.data) {
@@ -179,6 +209,14 @@ export default function InstantScanPage() {
       });
       setStage("complete");
       setFailedStep(undefined);
+      if (address) {
+        setQuota((current) => ({
+          ...current,
+          freeUsed: true,
+          freeScansUsed: Math.max(current.freeScansUsed, 1),
+          totalScans: (current.totalScans ?? 0) + 1
+        }));
+      }
       toast.success("Package scan complete.");
     } catch (error) {
       const message = getErrorMessage(error);
@@ -248,8 +286,8 @@ export default function InstantScanPage() {
               </label>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              {(["quick", "standard", "deep"] as const).map((depth) => (
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              {(["instant", "deep"] as const).map((depth) => (
                 <button
                   key={depth}
                   type="button"
@@ -260,10 +298,24 @@ export default function InstantScanPage() {
                     background: scanDepth === depth ? "var(--orange-dim)" : "var(--bg-glass)"
                   }}
                 >
-                  <p className="font-semibold capitalize text-[var(--text-primary)]">{depth} Scan</p>
-                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    {depth === "quick" ? "First scan free · 0 USDT after" : `${prices[depth]} USDT`}
+                  <p className="font-semibold uppercase text-[var(--text-primary)]">
+                    {depth === "instant" ? "Instant Scan" : "Deep Scan"}
                   </p>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    {depth === "instant"
+                      ? quota.freeUsed
+                        ? "1 USDT - KiteAI Testnet"
+                        : "Your first scan is free"
+                      : "3 USDT - no free trial"}
+                  </p>
+                  <ul className="mt-3 space-y-1 text-xs text-[var(--text-muted)]">
+                    {(depth === "instant"
+                      ? ["npm metadata", "Risk signals", "Heurist triage", "Concise report"]
+                      : ["Everything in Instant", "Dependency review", "Version history audit", "Critic validation pass"]
+                    ).map((item) => (
+                      <li key={item}>- {item}</li>
+                    ))}
+                  </ul>
                 </button>
               ))}
             </div>
@@ -308,9 +360,9 @@ export default function InstantScanPage() {
             <button
               type="button"
               onClick={runScan}
-              disabled={busy || (scanDepth !== "quick" && !contractsReady)}
+              disabled={busy || (scanDepth !== "instant" && !contractsReady)}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
-              title={!contractsReady && scanDepth !== "quick" ? "Deploy contracts first" : undefined}
+              title={!contractsReady && scanDepth !== "instant" ? "Deploy contracts first" : undefined}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               {busy ? "Scan in progress" : "Run Scan"}
@@ -321,18 +373,14 @@ export default function InstantScanPage() {
 
           <Card className="p-5">
             <p className="label-sm label-orange">Pricing</p>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Quick Scan</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">Free first scan, then 0 USDT.</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">Instant Scan</p>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">First scan free per wallet, then 1 USDT.</p>
               </div>
               <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Standard</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">1 USDT for deeper analysis.</p>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Deep</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">3 USDT for higher review depth.</p>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">Deep Scan</p>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">Always 3 USDT. No free trial.</p>
               </div>
             </div>
           </Card>
@@ -487,7 +535,7 @@ function getErrorMessage(err: unknown): string {
     if (err.status === 402) return "Payment required. Approve USDT to continue.";
     if (err.status === 404) return "Package not found on npm registry.";
     if (err.status === 408 || err.message.toLowerCase().includes("timed out")) {
-      return "Analysis timed out. Try again or use Quick Scan.";
+      return "Analysis timed out. Try again or use Instant Scan.";
     }
     if (err.status >= 500) return `Server error. ${err.message}`;
     return err.message;

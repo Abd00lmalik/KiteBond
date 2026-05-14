@@ -32,8 +32,8 @@ export async function GET() {
         scanPayments: "/api/agent/abi/scan-payments"
       },
       pricing: {
-        quickScan: "0",
-        standardScan: "1000000000000000000",
+        instantFirstScan: "0",
+        instantScan: "1000000000000000000",
         deepScan: "3000000000000000000"
       },
       skillDoc: "/skill.md",

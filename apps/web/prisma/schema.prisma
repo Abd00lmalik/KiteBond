@@ -66,7 +66,7 @@ model Hunt {
   termsHash      String?
   metadataHash   String?
   createdTx      String?
-  txHash         String?
+  txHash         String?      @unique
   winnerAddress  String?
   settlementTx   String?
   resolvedAt     DateTime?

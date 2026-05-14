@@ -15,11 +15,10 @@ import {
   tryGetScanPaymentsAddress
 } from "@/lib/contractConfig";
 
-export type ScanDepth = "quick" | "standard" | "deep";
+export type ScanDepth = "instant" | "deep";
 
 const depthToEnum: Record<ScanDepth, number> = {
-  quick: 0,
-  standard: 1,
+  instant: 0,
   deep: 2
 };
 
@@ -117,7 +116,7 @@ export function useCreateHunt() {
       packageNameHash,
       versionHash,
       termsHash,
-      scanDepth = "quick",
+      scanDepth = "instant",
       rewardAmount,
       stakeRequired,
       deadlineSeconds

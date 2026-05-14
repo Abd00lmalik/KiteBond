@@ -26,6 +26,7 @@ interface AnalysisInput {
   dependencyCount: number;
   signalFlags: string[];
   signalScore: number;
+  phase?: string;
 }
 
 function scoreToReportSeverity(score: number): HeuristScanReport["severity"] {
@@ -111,6 +112,7 @@ export async function analyzePackageWithHeurist(
     `Has TypeScript types: ${input.hasTypes}`,
     `Has install/postinstall scripts: ${input.hasInstallScript}`,
     `Runtime dependency count: ${input.dependencyCount}`,
+    input.phase ? `Analysis phase: ${input.phase}` : "",
     `Pre-computed risk score: ${input.signalScore}/100`,
     "Pre-computed signal flags:",
     ...input.signalFlags.map((flag) => `  - ${flag}`),
@@ -189,6 +191,53 @@ export async function analyzePackageWithHeurist(
     }
     return buildFallback(packageName, input, false);
   }
+}
+
+export async function analyzeDeepPackageWithHeurist(
+  packageName: string,
+  input: AnalysisInput & { dependencyFlags: string[] }
+): Promise<HeuristScanReport> {
+  const metadata = await analyzePackageWithHeurist(packageName, {
+    ...input,
+    phase: "Deep Scan call 1/3 - metadata, maintainer, publication, repository, license, and incident history",
+    signalFlags: input.signalFlags
+  });
+
+  const dependencies = await analyzePackageWithHeurist(packageName, {
+    ...input,
+    phase: "Deep Scan call 2/3 - dependency and install lifecycle risk",
+    signalFlags: [...input.signalFlags, ...input.dependencyFlags]
+  });
+
+  const critic = await analyzePackageWithHeurist(packageName, {
+    ...input,
+    phase:
+      "Deep Scan call 3/3 - skeptical critic. Downgrade claims without concrete evidence and remove false positives.",
+    signalFlags: [
+      ...input.signalFlags,
+      ...input.dependencyFlags,
+      `Metadata pass: ${metadata.severity} ${metadata.riskScore}/100 - ${metadata.summary}`,
+      `Dependency pass: ${dependencies.severity} ${dependencies.riskScore}/100 - ${dependencies.summary}`
+    ],
+    signalScore: Math.round((metadata.riskScore + dependencies.riskScore + input.signalScore) / 3)
+  });
+
+  const riskScore = Math.round((metadata.riskScore + dependencies.riskScore + critic.riskScore) / 3);
+  const severity = scoreToReportSeverity(riskScore);
+  const heuristCalled = metadata.heuristCalled || dependencies.heuristCalled || critic.heuristCalled;
+
+  return {
+    severity,
+    riskScore,
+    heuristCalled,
+    summary: critic.summary || metadata.summary,
+    details: [
+      "Metadata pass: " + metadata.summary,
+      "Dependency pass: " + dependencies.summary,
+      "Critic pass: " + critic.summary
+    ],
+    flags: Array.from(new Set([...metadata.flags, ...dependencies.flags, ...critic.flags])).slice(0, 10)
+  };
 }
 
 function buildFallback(packageName: string, input: AnalysisInput, heuristCalled: boolean): HeuristScanReport {

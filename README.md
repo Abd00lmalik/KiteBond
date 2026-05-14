@@ -42,7 +42,7 @@ kitebond/
 
 ## Security Boundary
 
-KiteBond does not run `npm install` on packages being analyzed. It does not execute package code, run lifecycle scripts, start containers, exfiltrate secrets, or generate exploit payloads. Current analysis uses npm registry metadata, deterministic risk signals, and Heurist AI review over structured input.
+KiteBond does not run `npm install` on packages being analyzed. It does not execute package code, run lifecycle scripts, start containers, exfiltrate secrets, or generate exploit payloads. Current analysis uses npm registry metadata, deterministic risk signals, and Heurist AI review over structured input. Heurist MCP/Agent Builder orchestration is planned for v2; the MVP uses direct chat-completion calls for reliability and simpler production debugging.
 
 ## Setup
 
@@ -110,7 +110,7 @@ Open `http://localhost:3000`, then click **Launch App**.
 5. Go to **Instant Scan**.
 6. Enter `lodash`.
 7. Leave version as `latest`.
-8. Select **Quick Scan**.
+8. Select **Instant Scan**.
 9. Click **Run Scan**.
 10. Confirm the idle pipeline starts only after wallet and network checks.
 11. Confirm package analysis starts after payment authorization for paid tiers.

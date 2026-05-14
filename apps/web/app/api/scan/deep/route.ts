@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { apiError } from "@/lib/apiError";
+import { analyzeDependencies } from "@/lib/dependencies";
 import { prisma } from "@/lib/db";
-import { analyzePackageWithHeurist } from "@/lib/heurist";
+import { analyzeDeepPackageWithHeurist } from "@/lib/heurist";
 import type { RiskSignal, Severity } from "@/lib/heuristics";
 import { toJsonValue } from "@/lib/json";
 import { fetchNpmMeta } from "@/lib/npm";
@@ -11,11 +12,9 @@ import { extractSignals } from "@/lib/signals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 40;
+export const maxDuration = 55;
 
-type ScanStage = "auth" | "resolve" | "analyze" | "save";
-
-function stageError(stage: ScanStage, error: string, status = 500) {
+function stageError(stage: "auth" | "resolve" | "analyze" | "save", error: string, status = 500) {
   return NextResponse.json({ success: false, stage, error }, { status });
 }
 
@@ -26,11 +25,10 @@ export async function POST(req: NextRequest) {
     address?: string;
     walletAddress?: string;
     version?: string;
-    scanType?: "instant" | "deep";
-    scanDepth?: "instant" | "deep";
     paymentTxHash?: string;
     onchainScanId?: string;
   };
+
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -39,100 +37,47 @@ export async function POST(req: NextRequest) {
 
   const rawPackageName = (body.package ?? body.packageName ?? "").trim().toLowerCase();
   if (!rawPackageName) return apiError("Package name is required.", 400);
-  if (rawPackageName.length > 214) return apiError("Package name too long.", 400);
-  if (/[\/\\<>]/.test(rawPackageName)) return apiError("Invalid package name characters.", 400);
+  if (rawPackageName.length > 214 || /[\/\\<>]/.test(rawPackageName)) return apiError("Invalid package name.", 400);
 
   const packageName = rawPackageName.split("@")[0] || rawPackageName;
-  if (!packageName) return apiError("Package name is required.", 400);
-
-  const address = (body.address ?? body.walletAddress ?? "").trim().toLowerCase() || "anonymous";
-  const scanDepth = body.scanType ?? body.scanDepth ?? "instant";
-  if (scanDepth !== "instant" && scanDepth !== "deep") {
-    return stageError("auth", "Invalid scan type. Choose Instant Scan or Deep Scan.", 400);
-  }
+  const address = (body.address ?? body.walletAddress ?? "").trim().toLowerCase();
+  if (!address) return stageError("auth", "Connect your wallet before Deep Scan.", 401);
+  if (!body.paymentTxHash) return stageError("auth", "Payment required for Deep Scan.", 402);
 
   try {
     await prisma.$queryRaw`SELECT 1`;
   } catch (err) {
-    console.error("[Scan] DB ping failed:", err);
-    return NextResponse.json(
-      {
-        success: false,
-        stage: "auth",
-        error: "Database is not reachable. Check Vercel DATABASE_URL and Neon connection."
-      },
-      { status: 503 }
-    );
-  }
-
-  let isFreeInstantScan = scanDepth === "instant";
-  let requiredPayment = scanDepth === "deep" ? 3_000_000 : 1_000_000;
-
-  try {
-    const usage = await prisma.userUsage.findUnique({ where: { walletAddress: address } });
-    isFreeInstantScan = scanDepth === "instant" && (!usage || usage.freeScansUsed === 0);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error("[Scan][Auth] userUsage lookup failed (non-fatal):", detail);
-  }
-  requiredPayment = isFreeInstantScan ? 0 : scanDepth === "instant" ? 1_000_000 : 3_000_000;
-
-  if (requiredPayment > 0 && !body.paymentTxHash) {
-    return stageError(
-      "auth",
-      scanDepth === "deep" ? "Payment required for Deep Scan." : "Payment required for Instant Scan after the first free scan.",
-      402
-    );
-  }
-  if (requiredPayment > 0 && body.paymentTxHash) {
-    try {
-      const paymentConfirmed = await verifyKitePaymentTx(body.paymentTxHash);
-      if (!paymentConfirmed) return stageError("auth", "Payment transaction is not confirmed on KiteAI.", 402);
-    } catch (err) {
-      console.error("[Scan][Auth] Payment verification failed:", err instanceof Error ? err.message : err);
-      return stageError("auth", "Could not verify scan payment on KiteAI.", 502);
-    }
+    console.error("[Deep Scan][Auth] DB ping failed:", err);
+    return stageError("auth", "Database is not reachable. Check Vercel DATABASE_URL and Neon connection.", 503);
   }
 
   try {
-    await prisma.userUsage.upsert({
-      where: { walletAddress: address },
-      update: {
-        freeScansUsed: isFreeInstantScan ? { increment: 1 } : undefined,
-        scanCount: { increment: 1 },
-        totalScans: { increment: 1 },
-        lastScanAt: new Date()
-      },
-      create: {
-        walletAddress: address,
-        address,
-        freeScansUsed: isFreeInstantScan ? 1 : 0,
-        scanCount: 1,
-        totalScans: 1,
-        lastScanAt: new Date()
-      }
-    });
+    const paymentConfirmed = await verifyKitePaymentTx(body.paymentTxHash);
+    if (!paymentConfirmed) return stageError("auth", "Payment transaction is not confirmed on KiteAI.", 402);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error("[Scan][Auth] userUsage upsert failed (non-fatal):", detail);
+    console.error("[Deep Scan][Auth] Payment verification failed:", err instanceof Error ? err.message : err);
+    return stageError("auth", "Could not verify Deep Scan payment on KiteAI.", 502);
   }
 
   let meta;
   try {
     meta = await fetchNpmMeta(packageName, body.version ?? "latest");
   } catch (err) {
-    return stageError(
-      "resolve",
-      err instanceof Error ? err.message : "Failed to resolve package from npm registry.",
-      400
-    );
+    return stageError("resolve", err instanceof Error ? err.message : "Failed to resolve package from npm registry.", 400);
   }
 
   const signals = extractSignals(meta, packageName);
+  const dependencyRisk = await analyzeDependencies(meta.dependencies);
+  const dependencyFlags = [
+    `Direct dependencies: ${dependencyRisk.totalDeps}`,
+    dependencyRisk.suspiciousDeps.length
+      ? `Suspicious dependency names: ${dependencyRisk.suspiciousDeps.join(", ")}`
+      : "No suspicious dependency naming patterns detected."
+  ];
 
   let heuristReport;
   try {
-    heuristReport = await analyzePackageWithHeurist(packageName, {
+    heuristReport = await analyzeDeepPackageWithHeurist(packageName, {
       version: meta.version,
       description: meta.description,
       author: meta.author,
@@ -144,21 +89,15 @@ export async function POST(req: NextRequest) {
       hasInstallScript: meta.hasInstallScript,
       dependencyCount: meta.dependencyCount,
       signalFlags: signals.flags.map((flag) => flag.message),
-      signalScore: signals.riskScore
+      signalScore: signals.riskScore,
+      dependencyFlags
     });
   } catch (err) {
-    return NextResponse.json(
-      {
-        success: false,
-        stage: "analyze",
-        error: `Heurist analysis failed. ${err instanceof Error ? err.message : ""}`.trim()
-      },
-      { status: 500 }
-    );
+    return stageError("analyze", `Deep Heurist analysis failed. ${err instanceof Error ? err.message : ""}`.trim(), 500);
   }
 
   const riskScore = heuristReport.heuristCalled
-    ? Math.max(signals.riskScore, Math.min(heuristReport.riskScore, signals.riskScore + 20))
+    ? Math.max(signals.riskScore, Math.min(heuristReport.riskScore, signals.riskScore + 25))
     : signals.riskScore;
   const riskLevel = scoreToSeverity(riskScore);
   const riskSignals: RiskSignal[] = signals.flags.map((flag) => ({
@@ -177,22 +116,20 @@ export async function POST(req: NextRequest) {
     signals: riskSignals,
     finalRecommendation:
       riskScore > 60 ? "avoid_until_manual_review" : riskScore >= 30 ? "use_with_caution" : "safe_to_review",
-    confidence: heuristReport.heuristCalled ? 0.74 : 0.54,
+    confidence: heuristReport.heuristCalled ? 0.82 : 0.58,
     heuristCalled: heuristReport.heuristCalled,
     limitations: heuristReport.heuristCalled ? [] : ["Heurist unavailable; deterministic fallback report returned."],
-    methodology: heuristReport.heuristCalled
-      ? "npm registry metadata, deterministic signal extraction, and Heurist chat-completions analysis"
-      : "npm registry metadata and deterministic signal extraction fallback",
+    methodology: "Deep Scan: npm metadata, dependency risk helper, three Heurist passes, and critic validation",
     metadata: {
       repository: meta.repository,
       license: meta.license,
       dependencyCount: meta.dependencyCount,
+      dependencyRisk,
       hasInstallScripts: meta.hasInstallScript,
       publishedAt: meta.publishedAt,
       maintainerCount: meta.maintainerCount,
       weeklyDownloads: meta.weeklyDownloads,
-      heuristCalled: heuristReport.heuristCalled,
-      details: heuristReport.details,
+      heuristDetails: heuristReport.details,
       flags: heuristReport.flags
     }
   };
@@ -200,11 +137,10 @@ export async function POST(req: NextRequest) {
   const scanId =
     body.onchainScanId && ethers.isHexString(body.onchainScanId)
       ? body.onchainScanId
-      : ethers.keccak256(ethers.toUtf8Bytes(`${address}:${meta.name}:${meta.version}:${Date.now()}`));
-  const proofHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify({ meta, signals, report })));
-  let scanRecord: { id: string } | null = null;
-  let saveError: string | null = null;
+      : ethers.keccak256(ethers.toUtf8Bytes(`${address}:${meta.name}:${meta.version}:deep:${Date.now()}`));
+  const reportHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify({ meta, signals, dependencyRisk, report })));
 
+  let scanRecord: { id: string } | null = null;
   try {
     scanRecord = await prisma.instantScan.create({
       data: {
@@ -213,15 +149,15 @@ export async function POST(req: NextRequest) {
         packageName: meta.name,
         version: meta.version,
         packageVersion: meta.version,
-        scanDepth,
-        paid: requiredPayment > 0,
-        isPaid: requiredPayment > 0,
-        amountPaid: requiredPayment > 0 ? (scanDepth === "deep" ? "3" : "1") : "0",
-        paymentTx: body.paymentTxHash ?? null,
-        scanId: scanId as string,
-        proofHash,
-        reportHash: proofHash,
-        reportJson: toJsonValue({ meta, signals, report }),
+        scanDepth: "deep",
+        paid: true,
+        isPaid: true,
+        amountPaid: "3",
+        paymentTx: body.paymentTxHash,
+        scanId,
+        proofHash: reportHash,
+        reportHash,
+        reportJson: toJsonValue({ meta, signals, dependencyRisk, report }),
         proofAnchored: false,
         severity: riskLevel,
         riskScore,
@@ -230,8 +166,7 @@ export async function POST(req: NextRequest) {
       select: { id: true }
     });
   } catch (err) {
-    saveError = err instanceof Error ? err.message : String(err);
-    console.error("[Scan] DB save failed (non-fatal):", saveError);
+    console.error("[Deep Scan][Save] DB save failed (non-fatal):", err instanceof Error ? err.message : err);
   }
 
   return NextResponse.json({
@@ -239,13 +174,13 @@ export async function POST(req: NextRequest) {
     stage: "complete",
     data: {
       packageMeta: meta,
+      dependencyRisk,
       signals,
       report,
       scanId: scanRecord?.id ?? null,
       onchainScanId: scanId,
-      reportHash: proofHash,
-      proofAnchored: false,
-      saveError: process.env.NODE_ENV === "development" ? saveError : saveError ? "Scan result was not saved, but analysis completed." : null
+      reportHash,
+      proofAnchored: false
     }
   });
 }
@@ -266,6 +201,7 @@ function scoreToSeverity(score: number): Severity {
 }
 
 function recommendationForFlag(code: string) {
+  if (code === "KNOWN_INCIDENT") return "Review affected versions and pin or migrate according to the incident recommendation.";
   if (code === "TYPOSQUAT_RISK") return "Verify package identity before install and compare against the known package.";
   if (code === "MALICIOUS_INSTALL_SCRIPT") return "Do not install until the lifecycle script is manually reviewed and verified benign.";
   if (code === "HAS_INSTALL_SCRIPT") return "Review lifecycle scripts manually before installing this package in sensitive environments.";

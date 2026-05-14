@@ -1,4 +1,5 @@
 import type { NpmPackageMeta } from "./npm";
+import { KNOWN_INCIDENTS } from "./knownIncidents";
 
 export interface SecuritySignals {
   riskScore: number;
@@ -176,9 +177,20 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
   const inputLower = packageInput.trim().toLowerCase();
   const nameLower = meta.name.toLowerCase();
   const isTopPackage = TOP_PACKAGES.has(inputLower) || TOP_PACKAGES.has(nameLower);
+
+  const incident = KNOWN_INCIDENTS[nameLower];
+  if (incident) {
+    flags.push({
+      code: "KNOWN_INCIDENT",
+      severity: incident.severity,
+      message: `${incident.summary}${incident.affectedVersions ? ` Affected: ${incident.affectedVersions}.` : ""} ${incident.recommendation}`
+    });
+    score += incident.severity === "critical" ? 50 : incident.severity === "high" ? 30 : incident.severity === "medium" ? 20 : 5;
+  }
+
   for (const known of KNOWN_POPULAR) {
     const distance = levenshtein(inputLower, known);
-    if (inputLower !== known && distance <= 2) {
+    if (isTyposquatRisk(inputLower, known, distance)) {
       flags.push({
         code: "TYPOSQUAT_RISK",
         severity: "critical",
@@ -276,9 +288,20 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "SINGLE_MAINTAINER",
       severity: "low",
-      message: "Package has only one maintainer. Single point of compromise or abandonment."
+      message: incident?.maintenanceConcern
+        ? "Single maintainer with a documented package history concern. Succession risk for long-term projects."
+        : "Package has only one maintainer. Single point of compromise or abandonment."
     });
     score += 8;
+  }
+
+  if (incident?.maintenanceConcern) {
+    flags.push({
+      code: "NO_ACTIVE_MAINTENANCE",
+      severity: "medium",
+      message: incident.maintenanceConcern
+    });
+    score += 12;
   }
 
   if (meta.totalVersions === 1) {
@@ -322,6 +345,12 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
   }
 
   return { riskScore: Math.min(100, score), flags };
+}
+
+function isTyposquatRisk(inputLower: string, known: string, distance: number): boolean {
+  if (inputLower === known) return false;
+  const lengthDelta = Math.abs(inputLower.length - known.length);
+  return distance <= 1 || (distance === 2 && inputLower.length <= 8 && known.length <= 8 && lengthDelta <= 1);
 }
 
 function levenshtein(a: string, b: string): number {

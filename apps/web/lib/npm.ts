@@ -14,6 +14,7 @@ export interface NpmPackageMeta {
   hasTypes: boolean;
   hasInstallScript: boolean;
   dependencyCount: number;
+  dependencies: Record<string, string>;
   devDependencyCount: number;
   bundleSize: string | null;
   latestVersion: string;
@@ -131,6 +132,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
     hasTypes: Boolean(latestMeta.types || latestMeta.typings || latestMeta.devDependencies?.typescript),
     hasInstallScript: installScripts.length > 0,
     dependencyCount: Object.keys(deps).length,
+    dependencies: deps,
     devDependencyCount: Object.keys(devDeps).length,
     bundleSize: null,
     latestVersion: latest,
