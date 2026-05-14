@@ -30,6 +30,18 @@ export async function POST(req: NextRequest) {
     let stakeRequired = body.stakeRequired;
     let deadline = body.deadline;
 
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Database unreachable. Hunt exists on-chain. Retry sync after DB is restored."
+        },
+        { status: 503 }
+      );
+    }
+
     if (body.txHash && onChainId === undefined) {
       const provider = new ethers.JsonRpcProvider("https://rpc-testnet.gokite.ai/");
       const receipt = await provider.getTransactionReceipt(body.txHash);

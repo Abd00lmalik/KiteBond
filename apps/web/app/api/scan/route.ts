@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-type ScanStage = "resolve" | "analyze";
+type ScanStage = "auth" | "resolve" | "analyze" | "save";
 
 function stageError(stage: ScanStage, error: string, status = 500) {
   return NextResponse.json({ success: false, stage, error }, { status });
@@ -26,10 +26,31 @@ export async function POST(req: NextRequest) {
     return apiError("Invalid JSON body.", 400);
   }
 
-  const packageName = (body.package ?? body.packageName ?? "").trim();
+  const rawPackageName = (body.package ?? body.packageName ?? "").trim().toLowerCase();
+  if (!rawPackageName) return apiError("Package name is required.", 400);
+  if (rawPackageName.length > 214) return apiError("Package name too long.", 400);
+  if (/[\/\\<>]/.test(rawPackageName)) return apiError("Invalid package name characters.", 400);
+
+  const packageName = rawPackageName.startsWith("@")
+    ? rawPackageName
+    : rawPackageName.split("@")[0];
   if (!packageName) return apiError("Package name is required.", 400);
 
   const address = (body.address ?? body.walletAddress ?? "").trim().toLowerCase() || "anonymous";
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (err) {
+    console.error("[Scan] DB ping failed:", err);
+    return NextResponse.json(
+      {
+        success: false,
+        stage: "auth",
+        error: "Database is not reachable. Check Vercel DATABASE_URL and Neon connection."
+      },
+      { status: 503 }
+    );
+  }
 
   try {
     await prisma.userUsage.upsert({
@@ -50,10 +71,16 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (err) {
-    return apiError(
-      "Database error during authorization. Please try again.",
-      500,
-      err instanceof Error ? err.message : String(err)
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[Scan] Authorization DB error:", detail);
+    return NextResponse.json(
+      {
+        success: false,
+        stage: "auth",
+        error: "Database error during authorization. Please try again.",
+        ...(process.env.NODE_ENV === "development" ? { detail } : {})
+      },
+      { status: 500 }
     );
   }
 
@@ -137,6 +164,7 @@ export async function POST(req: NextRequest) {
   const scanId = ethers.keccak256(ethers.toUtf8Bytes(`${address}:${meta.name}:${meta.version}:${Date.now()}`));
   const proofHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify({ meta, signals, report })));
   let scanRecord: { id: string } | null = null;
+  let saveError: string | null = null;
 
   try {
     scanRecord = await prisma.instantScan.create({
@@ -162,7 +190,8 @@ export async function POST(req: NextRequest) {
       select: { id: true }
     });
   } catch (err) {
-    console.error("[Scan] DB save failed (non-fatal):", err);
+    saveError = err instanceof Error ? err.message : String(err);
+    console.error("[Scan] DB save failed (non-fatal):", saveError);
   }
 
   return NextResponse.json({
@@ -175,7 +204,8 @@ export async function POST(req: NextRequest) {
       scanId: scanRecord?.id ?? null,
       onchainScanId: scanId,
       reportHash: proofHash,
-      proofAnchored: false
+      proofAnchored: false,
+      saveError: process.env.NODE_ENV === "development" ? saveError : saveError ? "Scan result was not saved, but analysis completed." : null
     }
   });
 }

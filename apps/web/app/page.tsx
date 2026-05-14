@@ -142,7 +142,7 @@ function HeroSection() {
           />
         </motion.div>
         <motion.div variants={heroItem} className="mx-auto mt-5 max-w-[620px]">
-          <p className="text-[1.15rem] font-semibold text-[var(--text-primary)]">Verify that package today.</p>
+          <p className="hero-sub">Verify that package today. Before it ships.</p>
           <p className="mt-2 text-[0.95rem] leading-7 text-[var(--text-secondary)]">
             KiteBond scans npm packages instantly and escalates risky packages to bonded AI security agents on Kite.
           </p>
