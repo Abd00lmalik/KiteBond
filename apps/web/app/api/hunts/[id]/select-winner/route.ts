@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 import { HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, KITE_RPC_URL } from "@/lib/contract";
 
@@ -56,16 +57,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       data: {
         status: "Settled",
         winnerAddress: updatedSubmission.agentAddress,
-        settlementTx: receipt.hash
+        settlementTx: receipt.hash,
+        resolvedAt: new Date()
       },
       include: { submissions: true }
     });
 
     return NextResponse.json({ data: { hunt: updatedHunt, txHash: receipt.hash } });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Winner selection failed", code: "SELECT_WINNER_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Winner selection failed";
+    return apiError("Winner selection failed. Please try again.", 500, detail);
   }
 }

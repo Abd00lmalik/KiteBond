@@ -2,6 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// LOCAL: DATABASE_URL="file:./dev.db" requires temporarily switching provider to "sqlite".
+// PRODUCTION (Vercel/Neon): DATABASE_URL="postgresql://..." with provider="postgresql".
+// Current provider is set for PRODUCTION. Prefer a local PostgreSQL/Neon URL for dev.
 datasource db {
   // Local: use a local PostgreSQL URL. Production: postgresql://... (Neon, set in Vercel)
   provider = "postgresql"
@@ -11,9 +14,12 @@ datasource db {
 model UserUsage {
   id            String   @id @default(cuid())
   walletAddress String   @unique
+  address       String?  @unique
   freeScansUsed Int      @default(0)
   scanCount     Int      @default(0)
+  totalScans    Int      @default(0)
   huntCount     Int      @default(0)
+  lastScanAt    DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -21,16 +27,23 @@ model UserUsage {
 model InstantScan {
   id          String   @id @default(cuid())
   userAddress String
+  address     String?
   packageName String
   version     String
+  packageVersion String?
   scanDepth   String
   paid        Boolean  @default(false)
+  isPaid      Boolean  @default(false)
   amountPaid  String?
   paymentTx   String?
   proofTx     String?
+  proofTxHash String?
   scanId      String   @unique
+  proofHash   String?
   reportHash  String?
   reportJson  Json?
+  proofAnchored Boolean @default(false)
+  severity    String   @default("unknown")
   riskScore   Int?
   riskLevel   String?
   createdAt   DateTime @default(now())
@@ -38,20 +51,25 @@ model InstantScan {
 
 model Hunt {
   id             String       @id @default(cuid())
+  chainId        Int          @default(2368)
   chainHuntId    Int?         @unique
+  onChainId      Int?         @unique
   creatorAddress String
   packageName    String
   version        String
   scanDepth      String
   rewardAmount   String
   stakeRequired  String
+  stakeAmount    String?
   deadline       DateTime
   status         String       @default("Open")
   termsHash      String?
   metadataHash   String?
   createdTx      String?
+  txHash         String?
   winnerAddress  String?
   settlementTx   String?
+  resolvedAt     DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   submissions    Submission[]
@@ -65,12 +83,15 @@ model Submission {
   stakeTx          String?
   reportHash       String?
   reportJson       Json?
+  proofHash        String?
+  txHash           String?
   status           String   @default("Submitted")
   verifierResult   Boolean?
   verifierReport   Json?
   verificationHash String?
   verificationTx   String?
   settlementTx     String?
+  createdAt        DateTime @default(now())
   submittedAt      DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }

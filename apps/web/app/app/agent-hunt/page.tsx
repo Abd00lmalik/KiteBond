@@ -80,6 +80,18 @@ export default function AgentHuntPage() {
   const [meta, setMeta] = useState<PackageMeta | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [txWarning, setTxWarning] = useState<string | null>(null);
+  const [pendingSync, setPendingSync] = useState<{
+    txHash: string;
+    onChainId: string;
+    creatorAddress: string;
+    packageName: string;
+    version: string;
+    rewardAmount: string;
+    stakeRequired: string;
+    deadline: string;
+    termsHash: string;
+    metadataHash: string;
+  } | null>(null);
   const preflight = useHuntPreflight({ rewardAmount, stakeAmount: stakeRequired });
   const missingContracts = getMissingContractConfig();
   const huntSpender = (() => {
@@ -197,11 +209,22 @@ export default function AgentHuntPage() {
         deadlineSeconds
       });
 
-      const json = await safeFetch<{ data?: { id: string } }>("/api/hunts", {
+      const metadataHash = keccak256(stringToHex(JSON.stringify(meta || {})));
+      const json = await safeFetch<{
+        success?: boolean;
+        onChainSuccess?: boolean;
+        dbSaved?: boolean;
+        dbError?: string | null;
+        txHash?: string;
+        onChainId?: string;
+        data?: { id: string };
+        message?: string;
+      }>("/api/hunts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chainHuntId,
+          onChainId: chainHuntId,
           creatorAddress: address,
           packageName: packageName.trim(),
           version: resolvedVersion,
@@ -209,15 +232,52 @@ export default function AgentHuntPage() {
           stakeRequired,
           deadline: deadline.toISOString(),
           termsHash,
-          metadataHash: keccak256(stringToHex(JSON.stringify(meta || {}))),
+          metadataHash,
           createdTx: hash
         })
       });
+      if (json.onChainSuccess && !json.dbSaved) {
+        setPendingSync({
+          txHash: json.txHash || hash,
+          onChainId: json.onChainId || String(chainHuntId),
+          creatorAddress: address,
+          packageName: packageName.trim(),
+          version: resolvedVersion,
+          rewardAmount,
+          stakeRequired,
+          deadline: deadline.toISOString(),
+          termsHash,
+          metadataHash
+        });
+        const message = json.message || "Hunt confirmed on-chain, but indexing failed. Click Sync Hunt to retry.";
+        setTxWarning(message);
+        toast.error(message);
+        return;
+      }
       if (!json.data) throw new Error("Hunt record failed");
       toast.success("Hunt created on Kite.");
       router.push(`/app/hunts/${json.data.id}`);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt creation failed.";
+      setTxWarning(message);
+      toast.error(message);
+    }
+  }
+
+  async function syncHunt() {
+    if (!pendingSync) return;
+    try {
+      const json = await safeFetch<{ synced?: boolean; hunt?: { id: string }; error?: string }>("/api/hunt/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pendingSync)
+      });
+      if (!json.synced || !json.hunt) throw new Error(json.error || "Hunt sync failed.");
+      toast.success("Hunt indexed successfully.");
+      setPendingSync(null);
+      router.push(`/app/hunts/${json.hunt.id}`);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt sync failed.";
       setTxWarning(message);
       toast.error(message);
     }
@@ -324,6 +384,15 @@ export default function AgentHuntPage() {
           {txWarning && (
             <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] p-4 text-sm text-[var(--cyber-yellow)]">
               {txWarning}
+              {pendingSync && (
+                <button
+                  type="button"
+                  onClick={syncHunt}
+                  className="mt-3 block rounded-[var(--radius-sm)] border border-[var(--cyber-yellow)] px-3 py-1.5 font-mono text-xs uppercase tracking-[0.08em]"
+                >
+                  Sync Hunt
+                </button>
+              )}
             </div>
           )}
 

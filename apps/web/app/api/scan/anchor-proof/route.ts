@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -18,15 +19,13 @@ export async function POST(req: NextRequest) {
 
     await prisma.instantScan.updateMany({
       where: { id: scanId },
-      data: { proofTx: txHash, reportHash }
+      data: { proofTx: txHash, proofTxHash: txHash, reportHash, proofHash: reportHash, proofAnchored: true }
     });
 
     return NextResponse.json({ data: { success: true } });
   } catch (err) {
     console.error("[/api/scan/anchor-proof] Unhandled error:", err instanceof Error ? err.message : err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Could not record scan receipt", code: "ANCHOR_FAILED" },
-      { status: 500 }
-    );
+    const detail = err instanceof Error ? err.message : "Could not record scan receipt";
+    return apiError("Could not record scan receipt. Please try again.", 500, detail);
   }
 }

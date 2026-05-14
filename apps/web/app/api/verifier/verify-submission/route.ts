@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 import { getVerifierWallet } from "@/lib/agents/verifierAgent";
 import { HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, KITE_RPC_URL } from "@/lib/contract";
@@ -80,9 +81,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: { submission: updated, ...result, txHash } });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Verifier failed", code: "VERIFY_SUBMISSION_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Verifier failed";
+    return apiError("Verifier failed. Please try again.", 500, detail);
   }
 }

@@ -3,6 +3,7 @@ import type { NpmPackageMeta } from "./npm";
 
 const HEURIST_BASE = "https://llm-gateway.heurist.xyz";
 const HEURIST_MODEL = process.env.HEURIST_MODEL || "meta-llama/llama-3.3-70b-instruct";
+const HEURIST_MVP_MODEL = process.env.HEURIST_MODEL || "meta-llama/llama-3-70b-instruct";
 
 export interface HeuristAnalysis {
   packageName: string;
@@ -21,6 +22,14 @@ export interface HeuristAnalysis {
     dependencyCount: number;
     hasInstallScripts: boolean;
   };
+}
+
+export interface HeuristScanReport {
+  severity: "critical" | "high" | "medium" | "low" | "clean";
+  summary: string;
+  details: string[];
+  riskScore: number;
+  flags: string[];
 }
 
 const SYSTEM_PROMPT = `You are a rigorous npm supply-chain security analyst with expertise in malicious package detection, typosquatting, dependency confusion attacks, and compromised maintainer scenarios.
@@ -302,6 +311,149 @@ export async function analyzeWithHeurist(
       throw new Error(`Heurist analysis failed: ${secondErr instanceof Error ? secondErr.message : "unknown error"}`);
     }
   }
+}
+
+export async function analyzePackageWithHeurist(
+  packageName: string,
+  packageMeta: {
+    version: string;
+    description: string;
+    author: string;
+    weeklyDownloads: number;
+    publishedAt: string;
+    maintainerCount: number;
+    hasTypes: boolean;
+    licenseType: string;
+  }
+): Promise<HeuristScanReport> {
+  const apiKey = process.env.HEURIST_API_KEY;
+  if (!apiKey) {
+    console.warn("[Heurist] No API key - using deterministic fallback");
+    return buildFallbackReport(packageName, packageMeta);
+  }
+
+  const systemPrompt = `You are a senior npm package security analyst.
+Analyze npm package metadata for supply-chain security risks.
+You must respond ONLY with valid JSON matching this exact schema - no preamble, no markdown, no extra text:
+{
+  "severity": "critical"|"high"|"medium"|"low"|"clean",
+  "summary": "One sentence summary of the security assessment (minimum 60 characters)",
+  "details": ["bullet 1", "bullet 2", "bullet 3"],
+  "riskScore": 0-100,
+  "flags": ["flag1", "flag2"]
+}
+Severity guide: critical=active malware/typosquat, high=suspicious patterns, medium=notable risks, low=minor concerns, clean=no issues found.`;
+
+  const userPrompt = `Analyze this npm package for security risks:
+Package: ${packageName}@${packageMeta.version}
+Description: ${packageMeta.description || "none"}
+Author: ${packageMeta.author || "unknown"}
+Weekly downloads: ${packageMeta.weeklyDownloads.toLocaleString()}
+Published: ${packageMeta.publishedAt}
+Maintainers: ${packageMeta.maintainerCount}
+Has TypeScript types: ${packageMeta.hasTypes}
+License: ${packageMeta.licenseType || "unknown"}
+
+Check for: typosquatting, dependency confusion, abandoned packages, suspicious maintainer patterns, unusual download spikes, missing license, malicious indicators.`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 25_000);
+
+  try {
+    const response = await fetch(`${HEURIST_BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: HEURIST_MVP_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        max_tokens: 600,
+        temperature: 0.1
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("[Heurist] API error:", response.status, errText);
+      return buildFallbackReport(packageName, packageMeta);
+    }
+
+    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const rawContent = data.choices?.[0]?.message?.content ?? "";
+    const clean = rawContent.replace(/```json|```/g, "").trim();
+
+    let parsed: HeuristScanReport;
+    try {
+      parsed = JSON.parse(clean) as HeuristScanReport;
+    } catch {
+      console.error("[Heurist] JSON parse failed. Raw:", rawContent.slice(0, 200));
+      return buildFallbackReport(packageName, packageMeta);
+    }
+
+    if (!parsed.severity || !parsed.summary || parsed.summary.length < 40 || !Array.isArray(parsed.details)) {
+      console.error("[Heurist] Response missing required fields:", parsed);
+      return buildFallbackReport(packageName, packageMeta);
+    }
+
+    return parsed;
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === "AbortError") {
+      console.error("[Heurist] Request timed out after 25s");
+    } else {
+      console.error("[Heurist] Unexpected error:", err);
+    }
+    return buildFallbackReport(packageName, packageMeta);
+  }
+}
+
+function buildFallbackReport(
+  packageName: string,
+  meta: { weeklyDownloads: number; publishedAt: string; maintainerCount: number }
+): HeuristScanReport {
+  let score = 20;
+  const flags: string[] = [];
+
+  if (meta.weeklyDownloads < 1000) {
+    score += 20;
+    flags.push("Low download volume");
+  }
+  if (meta.maintainerCount === 1) {
+    score += 10;
+    flags.push("Single maintainer");
+  }
+
+  const publishedAt = new Date(meta.publishedAt);
+  if (!Number.isNaN(publishedAt.getTime())) {
+    const ageMs = Date.now() - publishedAt.getTime();
+    const ageDays = ageMs / (1000 * 60 * 60 * 24);
+    if (ageDays < 30) {
+      score += 25;
+      flags.push("Recently published (< 30 days)");
+    }
+  }
+
+  const severity = score >= 70 ? "high" : score >= 45 ? "medium" : score >= 25 ? "low" : "clean";
+
+  return {
+    severity,
+    summary: `Automated signal-based analysis for ${packageName}. Heurist AI analysis unavailable - using deterministic package metadata signals only.`,
+    details: [
+      `Risk score: ${score}/100 based on package metadata signals.`,
+      ...flags.map((flag) => `Warning: ${flag}`),
+      "Manual review recommended before production use."
+    ],
+    riskScore: score,
+    flags
+  };
 }
 
 export function buildFallbackAnalysis(

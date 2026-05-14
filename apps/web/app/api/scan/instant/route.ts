@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { apiError } from "@/lib/apiError";
 import { ScanPaymentsEthersABI } from "@/lib/contract";
 import { CONTRACT_CONFIG } from "@/lib/contractConfig";
 import { prisma } from "@/lib/db";
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const usage =
       (await prisma.userUsage.findUnique({ where: { walletAddress } })) ||
-      (await prisma.userUsage.create({ data: { walletAddress } }));
+      (await prisma.userUsage.create({ data: { walletAddress, address: walletAddress } }));
 
     const price = getScanPrice(scanDepth);
     const isFreeQuick = scanDepth === "quick" && usage.freeScansUsed < 1;
@@ -100,16 +101,23 @@ export async function POST(req: NextRequest) {
     const scan = await prisma.instantScan.create({
       data: {
         userAddress: walletAddress,
+        address: walletAddress,
         packageName: meta.name,
         version: meta.version,
+        packageVersion: meta.version,
         scanDepth,
         paid: paymentRequired,
+        isPaid: paymentRequired,
         amountPaid: paymentRequired ? price : "0",
         paymentTx: body.paymentTxHash ?? null,
         proofTx: anchor.txHash,
+        proofTxHash: anchor.txHash,
         scanId: onchainScanId,
+        proofHash: reportHash,
         reportHash,
         reportJson: toJsonValue(report),
+        proofAnchored: anchor.anchored,
+        severity: riskLevel,
         riskScore,
         riskLevel
       }
@@ -120,7 +128,9 @@ export async function POST(req: NextRequest) {
         where: { walletAddress },
         data: {
           freeScansUsed: isFreeQuick ? { increment: 1 } : undefined,
-          scanCount: { increment: 1 }
+          scanCount: { increment: 1 },
+          totalScans: { increment: 1 },
+          lastScanAt: new Date()
         }
       });
     }
@@ -140,10 +150,8 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[/api/scan/instant] Unhandled error:", err instanceof Error ? err.message : err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Scan failed", code: "SCAN_FAILED" },
-      { status: 500 }
-    );
+    const detail = err instanceof Error ? err.message : "Scan failed";
+    return apiError("Scan failed. Please try again.", 500, detail);
   }
 }
 

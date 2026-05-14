@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -21,10 +22,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data: hunts });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to list hunts", code: "HUNTS_LIST_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Failed to list hunts";
+    return apiError("Database operation failed. Please try again.", 500, detail);
   }
 }
 
@@ -32,6 +31,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
       chainHuntId?: number;
+      onChainId?: number;
       creatorAddress?: string;
       packageName?: string;
       version?: string;
@@ -44,55 +44,88 @@ export async function POST(req: NextRequest) {
       createdTx?: string;
     };
 
-    const required = ["chainHuntId", "creatorAddress", "packageName", "version", "rewardAmount", "stakeRequired", "deadline", "createdTx"] as const;
+    const required = ["creatorAddress", "packageName", "version", "rewardAmount", "stakeRequired", "deadline", "createdTx"] as const;
     for (const key of required) {
       if (body[key] === undefined || body[key] === null || body[key] === "") {
         return NextResponse.json({ error: `Missing ${key}`, code: "HUNT_INPUT_REQUIRED" }, { status: 400 });
       }
     }
 
-    const hunt = await prisma.hunt.upsert({
-      where: { chainHuntId: Number(body.chainHuntId) },
-      update: {
-        creatorAddress: body.creatorAddress!,
-        packageName: body.packageName!,
-        version: body.version!,
-        scanDepth: body.scanDepth || "quick",
-        rewardAmount: body.rewardAmount!,
-        stakeRequired: body.stakeRequired!,
-        deadline: new Date(body.deadline!),
-        termsHash: body.termsHash,
-        metadataHash: body.metadataHash,
-        createdTx: body.createdTx,
-        status: "Open"
-      },
-      create: {
-        chainHuntId: Number(body.chainHuntId),
-        creatorAddress: body.creatorAddress!,
-        packageName: body.packageName!,
-        version: body.version!,
-        scanDepth: body.scanDepth || "quick",
-        rewardAmount: body.rewardAmount!,
-        stakeRequired: body.stakeRequired!,
-        deadline: new Date(body.deadline!),
-        termsHash: body.termsHash,
-        metadataHash: body.metadataHash,
-        createdTx: body.createdTx,
-        status: "Open"
-      }
-    });
+    const onChainId = Number(body.onChainId ?? body.chainHuntId);
+    if (!Number.isFinite(onChainId)) {
+      return NextResponse.json({ error: "Missing onChainId", code: "HUNT_INPUT_REQUIRED" }, { status: 400 });
+    }
 
-    await prisma.userUsage.upsert({
-      where: { walletAddress: body.creatorAddress! },
-      update: { huntCount: { increment: 1 } },
-      create: { walletAddress: body.creatorAddress!, huntCount: 1 }
-    });
+    try {
+      const hunt = await prisma.hunt.upsert({
+        where: { onChainId },
+        update: {
+          chainId: 2368,
+          chainHuntId: onChainId,
+          creatorAddress: body.creatorAddress!,
+          packageName: body.packageName!,
+          version: body.version!,
+          scanDepth: body.scanDepth || "quick",
+          rewardAmount: body.rewardAmount!,
+          stakeRequired: body.stakeRequired!,
+          stakeAmount: body.stakeRequired!,
+          deadline: new Date(body.deadline!),
+          termsHash: body.termsHash,
+          metadataHash: body.metadataHash,
+          createdTx: body.createdTx,
+          txHash: body.createdTx,
+          status: "Open"
+        },
+        create: {
+          chainId: 2368,
+          chainHuntId: onChainId,
+          onChainId,
+          creatorAddress: body.creatorAddress!,
+          packageName: body.packageName!,
+          version: body.version!,
+          scanDepth: body.scanDepth || "quick",
+          rewardAmount: body.rewardAmount!,
+          stakeRequired: body.stakeRequired!,
+          stakeAmount: body.stakeRequired!,
+          deadline: new Date(body.deadline!),
+          termsHash: body.termsHash,
+          metadataHash: body.metadataHash,
+          createdTx: body.createdTx,
+          txHash: body.createdTx,
+          status: "Open"
+        }
+      });
 
-    return NextResponse.json({ data: hunt });
+      await prisma.userUsage.upsert({
+        where: { walletAddress: body.creatorAddress! },
+        update: { huntCount: { increment: 1 } },
+        create: { walletAddress: body.creatorAddress!, address: body.creatorAddress!, huntCount: 1 }
+      });
+
+      return NextResponse.json({
+        success: true,
+        onChainSuccess: true,
+        dbSaved: true,
+        txHash: body.createdTx,
+        onChainId: String(onChainId),
+        message: "Hunt created and indexed successfully.",
+        data: hunt
+      });
+    } catch (error) {
+      const dbError = error instanceof Error ? error.message : "Unknown DB error";
+      console.error("[Hunt] DB save failed after on-chain success:", dbError);
+      return NextResponse.json({
+        success: true,
+        onChainSuccess: true,
+        dbSaved: false,
+        dbError,
+        txHash: body.createdTx,
+        onChainId: String(onChainId),
+        message: "Hunt confirmed on-chain. Indexing failed - use Sync Hunt to retry."
+      });
+    }
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create hunt", code: "HUNT_CREATE_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Failed to create hunt";
+    return apiError("Hunt creation failed. Please try again.", 500, detail);
   }
 }

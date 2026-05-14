@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 import { toJsonValue } from "@/lib/json";
 
@@ -28,9 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         agentAddress: body.agentAddress,
         stakeTx: body.stakeTxHash,
         reportHash: body.reportHash,
+        proofHash: body.reportHash,
         reportJson: toJsonValue(body.reportJson),
         status: "Submitted",
-        settlementTx: body.submitTxHash
+        settlementTx: body.submitTxHash,
+        txHash: body.submitTxHash
       }
     });
 
@@ -52,9 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     return NextResponse.json({ data: submission });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to submit report", code: "SUBMIT_REPORT_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Failed to submit report";
+    return apiError("Database operation failed. Please try again.", 500, detail);
   }
 }

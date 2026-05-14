@@ -7,7 +7,7 @@ import { ArrowRight, Copy, Loader2, ReceiptText, ShieldCheck } from "lucide-reac
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
-import { CompactScanStatus } from "@/components/app/CompactScanStatus";
+import { CompactScanStatus, type CompactStage } from "@/components/app/CompactScanStatus";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
@@ -52,6 +52,7 @@ export default function InstantScanPage() {
   const [version, setVersion] = useState("latest");
   const [scanDepth, setScanDepth] = useState<ScanDepth>("quick");
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
+  const [stage, setStage] = useState<CompactStage>("idle");
 
   const busy = isScanBusy(context.state) || isApproving || isAuthorizing || isRecordingReceipt;
   const contractsReady = areContractsConfigured();
@@ -80,15 +81,18 @@ export default function InstantScanPage() {
     const resolvedVersion = version.trim() || "latest";
 
     dispatch({ type: "START", payload: { packageName: pkg, version: resolvedVersion, scanDepth } });
+    setStage("authorizing");
 
     if (!pkg) {
       dispatch({ type: "ERROR", payload: { error: "Enter an npm package name." } });
+      setStage("error");
       toast.error("Enter an npm package name.");
       return;
     }
 
     if (!isConnected || !address) {
       dispatch({ type: "ERROR", payload: { error: "Connect your wallet first." } });
+      setStage("error");
       toast.error("Connect your wallet before scanning.");
       return;
     }
@@ -96,6 +100,7 @@ export default function InstantScanPage() {
 
     if (!isCorrectNetwork) {
       dispatch({ type: "ERROR", payload: { error: "Switch to KiteAI Testnet before scanning." } });
+      setStage("error");
       toast.error("Switch to KiteAI Testnet.");
       return;
     }
@@ -105,6 +110,7 @@ export default function InstantScanPage() {
       const missing = missingContracts.join(", ");
       const message = missing ? `Contracts not configured (${missing}).` : "Contracts not configured.";
       dispatch({ type: "ERROR", payload: { error: message } });
+      setStage("error");
       toast.error(message);
       return;
     }
@@ -136,6 +142,7 @@ export default function InstantScanPage() {
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
+      setStage("resolving");
       await safeFetch<{ data?: unknown }>(
         `/api/npm/package?name=${encodeURIComponent(pkg)}&version=${encodeURIComponent(resolvedVersion)}`,
         { cache: "no-store" }
@@ -144,6 +151,7 @@ export default function InstantScanPage() {
       dispatch({ type: "METADATA_INSPECTED" });
       dispatch({ type: "SIGNALS_COMPUTED" });
 
+      setStage("analyzing");
       const json = await safeFetch<{ data?: ScanResult; error?: string }>("/api/scan/instant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -159,6 +167,7 @@ export default function InstantScanPage() {
       if (!json.data) {
         throw new Error(json.error || "Scan failed.");
       }
+      setStage("anchoring");
 
       dispatch({ type: "HEURIST_COMPLETE", payload: { partial: json.data.report } });
       dispatch({
@@ -173,10 +182,12 @@ export default function InstantScanPage() {
       if (json.data.proofTx) {
         dispatch({ type: "RECEIPT_RECORDED", payload: { txHash: json.data.proofTx } });
       }
+      setStage("complete");
       toast.success("Package scan complete.");
     } catch (error) {
       const message = getErrorMessage(error);
       dispatch({ type: "ERROR", payload: { error: message } });
+      setStage("error");
       toast.error(message);
     }
   }
@@ -300,7 +311,7 @@ export default function InstantScanPage() {
               {busy ? "Scan in progress" : "Run Scan"}
             </button>
 
-            <CompactScanStatus state={context.state} error={context.error} isFree={context.isFree} />
+            <CompactScanStatus stage={stage} state={context.state} error={context.error} isFree={context.isFree} />
           </Card>
 
           <Card className="p-5">

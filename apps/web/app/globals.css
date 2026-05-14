@@ -511,41 +511,6 @@ pre,
   background: radial-gradient(ellipse 80% 50% at 50% 50%, var(--cyber-blue-ghost), transparent);
 }
 
-@keyframes glitch {
-  0%, 100% { clip-path: none; transform: none; }
-  20% { clip-path: polygon(0 15%, 100% 15%, 100% 30%, 0 30%); transform: translateX(-3px); }
-  21% { clip-path: none; transform: none; }
-  40% { clip-path: polygon(0 60%, 100% 60%, 100% 75%, 0 75%); transform: translateX(3px); }
-  41% { clip-path: none; transform: none; }
-}
-
-.glitch-text {
-  position: relative;
-}
-
-.glitch-text::before,
-.glitch-text::after {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  color: inherit;
-  pointer-events: none;
-}
-
-.glitch-text::before {
-  color: var(--cyber-blue);
-  animation: glitch 6s infinite;
-  animation-delay: 0s;
-  opacity: 0.5;
-}
-
-.glitch-text::after {
-  color: var(--cyber-red);
-  animation: glitch 6s infinite;
-  animation-delay: 0.1s;
-  opacity: 0.3;
-}
-
 .flow-step {
   display: flex;
   flex-direction: column;
@@ -691,9 +656,7 @@ pre,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scan-line,
-  .glitch-text::before,
-  .glitch-text::after {
+  .scan-line {
     animation: none !important;
   }
 

@@ -19,6 +19,7 @@ import {
   TerminalSquare
 } from "lucide-react";
 import { BinaryRain } from "@/components/landing/BinaryRain";
+import { GlitchHeadline } from "@/components/landing/GlitchHeadline";
 import { Container } from "@/components/shared/Container";
 import { Card } from "@/components/shared/Card";
 import { VIEWPORT, revealScaleCyber, revealUpCyber, staggerContainer } from "@/lib/motion";
@@ -144,16 +145,12 @@ function HeroSection() {
         <motion.p variants={heroItem} className="label-sm label-orange">
           npm supply-chain security - powered by kite
         </motion.p>
-        <motion.h1
-          variants={heroItem}
-          data-text="Don't get caught off guard."
-          style={{ fontSize: "clamp(3rem, 7vw, 5.5rem)", lineHeight: 1.08, letterSpacing: "-0.03em" }}
-          className="glitch-text heading-display mx-auto mt-6 max-w-[820px]"
-        >
-          Don&apos;t get caught
-          <br />
-          off guard.
-        </motion.h1>
+        <motion.div variants={heroItem}>
+          <GlitchHeadline
+            text="Don't get caught off guard."
+            className="heading-display mx-auto mt-6 max-w-[820px] text-[clamp(3rem,7vw,5.5rem)] leading-[1.08]"
+          />
+        </motion.div>
         <motion.div variants={heroItem} className="mx-auto mt-5 max-w-[620px]">
           <p className="text-[1.15rem] font-semibold text-[var(--text-primary)]">Verify that package today.</p>
           <p className="mt-2 text-[0.95rem] leading-7 text-[var(--text-secondary)]">

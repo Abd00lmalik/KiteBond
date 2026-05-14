@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -16,9 +17,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
     return NextResponse.json({ data: scan });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch scan", code: "SCAN_DETAIL_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Failed to fetch scan";
+    return apiError("Database operation failed. Please try again.", 500, detail);
   }
 }

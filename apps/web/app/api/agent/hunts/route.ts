@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseUnits } from "viem";
+import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -40,9 +41,7 @@ export async function GET(req: NextRequest) {
       }))
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to list agent hunts", code: "AGENT_HUNTS_ERROR" },
-      { status: 500 }
-    );
+    const detail = error instanceof Error ? error.message : "Failed to list agent hunts";
+    return apiError("Database operation failed. Please try again.", 500, detail);
   }
 }

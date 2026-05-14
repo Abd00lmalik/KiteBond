@@ -1,10 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { ScanState } from "@/lib/scanStateMachine";
 
 type StepStatus = "pending" | "active" | "done" | "failed" | "skipped";
+export type CompactStage = "idle" | "authorizing" | "resolving" | "analyzing" | "anchoring" | "complete" | "error";
 
-const steps = [
+const legacySteps = [
   {
     id: "payment",
     label: "Auth",
@@ -18,7 +20,7 @@ const steps = [
   { id: "receipt", label: "Receipt", activeStates: ["recording_receipt"] as ScanState[] }
 ];
 
-const stateOrder: ScanState[] = [
+const legacyStateOrder: ScanState[] = [
   "checking_wallet",
   "checking_network",
   "checking_free_or_price",
@@ -35,7 +37,7 @@ const stateOrder: ScanState[] = [
   "completed"
 ];
 
-const currentLabels: Partial<Record<ScanState, string>> = {
+const legacyLabels: Partial<Record<ScanState, string>> = {
   checking_wallet: "Checking wallet...",
   checking_network: "Checking network...",
   checking_free_or_price: "Checking scan eligibility...",
@@ -52,20 +54,27 @@ const currentLabels: Partial<Record<ScanState, string>> = {
   completed: "Scan complete."
 };
 
-function indexOfState(state: ScanState) {
-  return stateOrder.indexOf(state);
+const stageSteps = [
+  { key: "auth", label: "Authorization", active: "authorizing", doneWhen: ["resolving", "analyzing", "anchoring", "complete"] },
+  { key: "resolve", label: "Resolve Package", active: "resolving", doneWhen: ["analyzing", "anchoring", "complete"] },
+  { key: "analyze", label: "Heurist Analysis", active: "analyzing", doneWhen: ["anchoring", "complete"] },
+  { key: "anchor", label: "Proof Anchor", active: "anchoring", doneWhen: ["complete"] }
+] as const;
+
+function indexOfLegacyState(state: ScanState) {
+  return legacyStateOrder.indexOf(state);
 }
 
-function getStepStatus(step: (typeof steps)[number], state: ScanState, isFree: boolean): StepStatus {
+function getLegacyStepStatus(step: (typeof legacySteps)[number], state: ScanState, isFree: boolean): StepStatus {
   if (state === "failed") return "failed";
   if (state === "idle") return "pending";
 
-  const currentIndex = indexOfState(state);
-  const activeIndexes = step.activeStates.map(indexOfState);
+  const currentIndex = indexOfLegacyState(state);
+  const activeIndexes = step.activeStates.map(indexOfLegacyState);
   const firstActiveIndex = Math.min(...activeIndexes);
   const lastActiveIndex = Math.max(...activeIndexes);
 
-  if (step.id === "payment" && isFree && currentIndex >= indexOfState("resolving_package")) {
+  if (step.id === "payment" && isFree && currentIndex >= indexOfLegacyState("resolving_package")) {
     return "skipped";
   }
 
@@ -83,12 +92,109 @@ function statusColor(status: StepStatus) {
   return "var(--border-default)";
 }
 
-export function CompactScanStatus({ state, error, isFree }: { state: ScanState; error?: string; isFree: boolean }) {
-  if (state === "idle") return null;
+export function CompactScanStatus({
+  state,
+  stage,
+  error,
+  isFree
+}: {
+  state?: ScanState;
+  stage?: CompactStage;
+  error?: string;
+  isFree: boolean;
+}) {
+  if (stage) return <StageScanStatus stage={stage} error={error} isFree={isFree} />;
+  if (!state || state === "idle") return null;
 
-  const label = state === "failed" ? error || "Scan failed." : currentLabels[state] || state;
+  const label = state === "failed" ? error || "Scan failed." : legacyLabels[state] || state;
   const labelColor = state === "failed" ? "var(--red)" : state === "completed" ? "var(--green)" : "var(--orange)";
 
+  return (
+    <StatusShell label={label} labelColor={labelColor} showPulse={state !== "completed" && state !== "failed"}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        {legacySteps.map((step, index) => {
+          const status = getLegacyStepStatus(step, state, isFree);
+          const color = statusColor(status);
+          return (
+            <div key={step.id} style={{ display: "contents" }}>
+              <StepDot color={color} filled={status !== "pending"} title={status === "skipped" ? `${step.label}: free scan, no payment required` : step.label} />
+              {index < legacySteps.length - 1 && <Connector />}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+        {legacySteps.map((step) => {
+          const status = getLegacyStepStatus(step, state, isFree);
+          return <StepLabel key={step.id} label={step.label} color={statusColor(status)} />;
+        })}
+      </div>
+    </StatusShell>
+  );
+}
+
+function StageScanStatus({ stage, error, isFree }: { stage: CompactStage; error?: string; isFree: boolean }) {
+  if (stage === "idle") return null;
+
+  const labelMap: Record<CompactStage, string> = {
+    idle: "",
+    authorizing: "Authorizing scan...",
+    resolving: "Resolving npm package...",
+    analyzing: "Heurist analysis running...",
+    anchoring: "Anchoring proof on Kite...",
+    complete: "Scan complete.",
+    error: error || "Scan failed."
+  };
+  const labelColor = stage === "error" ? "var(--red)" : stage === "complete" ? "var(--green)" : "var(--orange)";
+
+  return (
+    <StatusShell label={labelMap[stage]} labelColor={labelColor} showPulse={stage !== "complete" && stage !== "error"}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        {stageSteps.map((step, index) => {
+          const skipped = step.key === "auth" && isFree && ["resolving", "analyzing", "anchoring", "complete"].includes(stage);
+          const failed = stage === "error";
+          const active = stage === step.active;
+          const done = (step.doneWhen as readonly string[]).includes(stage);
+          const color = failed
+            ? "var(--red)"
+            : skipped
+              ? "var(--text-muted)"
+              : done
+                ? "var(--green)"
+                : active
+                  ? "var(--orange)"
+                  : "var(--border-default)";
+          return (
+            <div key={step.key} style={{ display: "contents" }}>
+              <StepDot color={color} filled={done || active || failed} title={skipped ? `${step.label}: free scan, no payment required` : step.label} />
+              {index < stageSteps.length - 1 && <Connector />}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+        {stageSteps.map((step) => {
+          const active = stage === step.active;
+          const done = (step.doneWhen as readonly string[]).includes(stage);
+          const color = active ? "var(--orange)" : done ? "var(--green)" : "var(--text-muted)";
+          return <StepLabel key={step.key} label={step.label} color={color} />;
+        })}
+      </div>
+    </StatusShell>
+  );
+}
+
+function StatusShell({
+  label,
+  labelColor,
+  showPulse,
+  children
+}: {
+  label: string;
+  labelColor: string;
+  showPulse: boolean;
+  children: ReactNode;
+}) {
   return (
     <div
       style={{
@@ -102,57 +208,48 @@ export function CompactScanStatus({ state, error, isFree }: { state: ScanState; 
       }}
     >
       <div style={{ color: labelColor, marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
-        {state !== "completed" && state !== "failed" && (
-          <span style={{ animation: "pulse-dot 1.5s ease-in-out infinite" }}>●</span>
-        )}
+        {showPulse && <span style={{ animation: "pulse-dot 1.5s ease-in-out infinite" }}>●</span>}
         {label}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        {steps.map((step, index) => {
-          const status = getStepStatus(step, state, isFree);
-          const color = statusColor(status);
-          return (
-            <div key={step.id} style={{ display: "contents" }}>
-              <div
-                title={status === "skipped" ? `${step.label}: free scan, no payment required` : step.label}
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: status === "pending" ? "transparent" : color,
-                  border: `1px solid ${color}`,
-                  flexShrink: 0,
-                  transition: "background 0.3s, border-color 0.3s"
-                }}
-              />
-              {index < steps.length - 1 && (
-                <div style={{ flex: 1, height: 1, background: "var(--border-void)" }} />
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
-        {steps.map((step) => {
-          const status = getStepStatus(step, state, isFree);
-          const color = statusColor(status);
-          return (
-            <div
-              key={step.id}
-              style={{
-                flex: 1,
-                textAlign: "center",
-                fontSize: "0.60rem",
-                color,
-                overflow: "hidden",
-                whiteSpace: "nowrap"
-              }}
-            >
-              {step.label}
-            </div>
-          );
-        })}
-      </div>
+      {children}
+    </div>
+  );
+}
+
+function StepDot({ color, filled, title }: { color: string; filled: boolean; title: string }) {
+  return (
+    <div
+      title={title}
+      style={{
+        width: 8,
+        height: 8,
+        borderRadius: "50%",
+        background: filled ? color : "transparent",
+        border: `1px solid ${color}`,
+        flexShrink: 0,
+        transition: "background 0.3s, border-color 0.3s"
+      }}
+    />
+  );
+}
+
+function Connector() {
+  return <div style={{ flex: 1, height: 1, background: "var(--border-void)" }} />;
+}
+
+function StepLabel({ label, color }: { label: string; color: string }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        textAlign: "center",
+        fontSize: "0.60rem",
+        color,
+        overflow: "hidden",
+        whiteSpace: "nowrap"
+      }}
+    >
+      {label}
     </div>
   );
 }
