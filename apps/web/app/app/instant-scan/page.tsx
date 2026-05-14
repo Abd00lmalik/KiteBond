@@ -17,7 +17,7 @@ import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { useApproveToken, useAuthorizeScan, useRecordScanReceipt } from "@/hooks/useKiteBond";
 import { areContractsConfigured, getMissingContractConfig, getScanPaymentsAddress } from "@/lib/contractConfig";
 import { ApiError, safeFetch } from "@/lib/safeFetch";
-import { initialScanState, isScanBusy, scanReducer, type ScanDepth, type ScanReport } from "@/lib/scanStateMachine";
+import { initialScanState, isScanBusy, scanReducer, type ScanReport } from "@/lib/scanStateMachine";
 import type { Severity } from "@/lib/heuristics";
 import { useAccount } from "wagmi";
 
@@ -31,7 +31,7 @@ type ScanResult = {
   proofAnchored?: boolean;
 };
 
-const prices: Record<ScanDepth, string> = { instant: "1", deep: "3" };
+const INSTANT_PRICE_USDT = "1";
 
 const riskColors: Record<Severity, { bg: string; border: string; text: string }> = {
   clean: { bg: "rgba(0,180,255,0.08)", border: "rgba(0,180,255,0.25)", text: "#00b4ff" },
@@ -39,6 +39,14 @@ const riskColors: Record<Severity, { bg: string; border: string; text: string }>
   medium: { bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.25)", text: "#f59e0b" },
   high: { bg: "rgba(251,146,60,0.08)", border: "rgba(251,146,60,0.25)", text: "#fb923c" },
   critical: { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.25)", text: "#ef4444" }
+};
+
+const GRADE_STYLES: Record<string, { color: string; label: string }> = {
+  confirmed: { color: "#ff2d55", label: "CONFIRMED" },
+  suspicious: { color: "#ff9f0a", label: "SUSPICIOUS" },
+  heuristic: { color: "#ffd60a", label: "HEURISTIC" },
+  missing_data: { color: "#8fbc8f", label: "MISSING DATA" },
+  historical: { color: "#9b5de5", label: "HISTORICAL" }
 };
 
 export default function InstantScanPage() {
@@ -49,7 +57,6 @@ export default function InstantScanPage() {
   const { recordReceipt, isRecordingReceipt } = useRecordScanReceipt();
   const [packageName, setPackageName] = useState("lodash");
   const [version, setVersion] = useState("latest");
-  const [scanDepth, setScanDepth] = useState<ScanDepth>("instant");
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
   const [stage, setStage] = useState<CompactStage>("idle");
   const [failedStep, setFailedStep] = useState<CompactStepKey | undefined>();
@@ -107,7 +114,7 @@ export default function InstantScanPage() {
     const pkg = packageName.trim();
     const resolvedVersion = version.trim() || "latest";
 
-    dispatch({ type: "START", payload: { packageName: pkg, version: resolvedVersion, scanDepth } });
+    dispatch({ type: "START", payload: { packageName: pkg, version: resolvedVersion, scanDepth: "instant" } });
     setStage("authorizing");
     setFailedStep(undefined);
 
@@ -119,8 +126,8 @@ export default function InstantScanPage() {
       return;
     }
 
-    const isFree = scanDepth === "instant" && !quota.freeUsed;
-    const price = isFree ? "0" : prices[scanDepth];
+    const isFree = !quota.freeUsed;
+    const price = isFree ? "0" : INSTANT_PRICE_USDT;
     dispatch({ type: "PRICE_CHECKED", payload: { isFree, price } });
 
     if (!isFree && (!isConnected || !address)) {
@@ -153,9 +160,7 @@ export default function InstantScanPage() {
       let authTxHash: `0x${string}` | undefined;
       const packageHash = ethers.keccak256(ethers.toUtf8Bytes(pkg)) as `0x${string}`;
       const versionHash = ethers.keccak256(ethers.toUtf8Bytes(resolvedVersion)) as `0x${string}`;
-      let onchainScanId = ethers.keccak256(
-        ethers.toUtf8Bytes(`${address || "anonymous"}:${pkg}:${resolvedVersion}:${scanDepth}:${Date.now()}`)
-      ) as `0x${string}`;
+      let onchainScanId = ethers.keccak256(ethers.toUtf8Bytes(`${address || "anonymous"}:${pkg}:${resolvedVersion}:${Date.now()}`)) as `0x${string}`;
 
       if (!isFree) {
         dispatch({ type: "WALLET_OK" });
@@ -168,14 +173,13 @@ export default function InstantScanPage() {
         authTxHash = await authorizeScan({
           packageNameHash: packageHash,
           versionHash,
-          depth: scanDepth,
+          depth: "instant",
           scanId: onchainScanId
         });
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
-      const endpoint = scanDepth === "deep" ? "/api/scan/deep" : "/api/scan";
-      const json = await safeFetch<{ success?: boolean; data?: ScanResult; error?: string }>(endpoint, {
+      const json = await safeFetch<{ success?: boolean; data?: ScanResult; error?: string }>("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -185,8 +189,7 @@ export default function InstantScanPage() {
           walletAddress: address,
           paymentTxHash: authTxHash,
           onchainScanId,
-          scanType: scanDepth,
-          scanDepth
+          scanType: "instant"
         })
       });
       if (!json.data) {
@@ -286,38 +289,59 @@ export default function InstantScanPage() {
               </label>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              {(["instant", "deep"] as const).map((depth) => (
+            <div className="scan-cards-row mt-5">
+              <Card variant="orange" className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Instant Scan</h3>
+                  <span className="badge-live">Live</span>
+                </div>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  {quota.freeUsed ? "1 USDT - KiteAI Testnet" : "Your first scan is free"}
+                </p>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  Run KiteBond&apos;s full safe npm analysis with registry intelligence, dependency signals, script-risk checks,
+                  safe tarball inspection, and Heurist-powered security reasoning.
+                </p>
+                <ul className="mt-4 space-y-1 text-xs text-[var(--text-muted)]">
+                  <li>- Registry metadata and version checks</li>
+                  <li>- Maintainer, repository, and license signals</li>
+                  <li>- Dependency and typosquat risk analysis</li>
+                  <li>- Lifecycle script and keyword detection</li>
+                  <li>- Safe tarball/file-name inspection</li>
+                  <li>- Heurist-powered evidence report</li>
+                </ul>
                 <button
-                  key={depth}
                   type="button"
-                  onClick={() => setScanDepth(depth)}
-                  className="rounded-[var(--radius-md)] border p-4 text-left transition"
-                  style={{
-                    borderColor: scanDepth === depth ? "var(--border-orange)" : "var(--border-dim)",
-                    background: scanDepth === depth ? "var(--orange-dim)" : "var(--bg-glass)"
-                  }}
+                  onClick={runScan}
+                  disabled={busy}
+                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
                 >
-                  <p className="font-semibold uppercase text-[var(--text-primary)]">
-                    {depth === "instant" ? "Instant Scan" : "Deep Scan"}
-                  </p>
-                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                    {depth === "instant"
-                      ? quota.freeUsed
-                        ? "1 USDT - KiteAI Testnet"
-                        : "Your first scan is free"
-                      : "3 USDT - no free trial"}
-                  </p>
-                  <ul className="mt-3 space-y-1 text-xs text-[var(--text-muted)]">
-                    {(depth === "instant"
-                      ? ["npm metadata", "Risk signals", "Heurist triage", "Concise report"]
-                      : ["Everything in Instant", "Dependency review", "Version history audit", "Critic validation pass"]
-                    ).map((item) => (
-                      <li key={item}>- {item}</li>
-                    ))}
-                  </ul>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                  {busy ? "Scan in progress" : "Run Instant Scan"}
                 </button>
-              ))}
+              </Card>
+
+              <Card className="scan-card-locked p-5">
+                <div className="relative z-[2] flex items-center justify-between gap-3">
+                  <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Deep Scan</h3>
+                  <span className="badge-soon">Coming Soon</span>
+                </div>
+                <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">Locked</p>
+                <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">
+                  Future runtime analysis for high-risk packages using isolated sandbox workers, behavior tracing,
+                  and verification tests.
+                </p>
+                <ul className="relative z-[2] mt-4 space-y-1">
+                  <li className="scan-bullet-locked">Isolated dynamic sandbox</li>
+                  <li className="scan-bullet-locked">Behavior tracing</li>
+                  <li className="scan-bullet-locked">Runtime package monitoring</li>
+                  <li className="scan-bullet-locked">Defensive verification tests</li>
+                  <li className="scan-bullet-locked">Execution proof</li>
+                </ul>
+                <button type="button" disabled className="btn-scan-locked relative z-[2] mt-5">
+                  Locked - Coming Soon
+                </button>
+              </Card>
             </div>
 
             {!isCorrectNetwork && (
@@ -357,17 +381,6 @@ export default function InstantScanPage() {
               </div>
             )}
 
-            <button
-              type="button"
-              onClick={runScan}
-              disabled={busy || (scanDepth !== "instant" && !contractsReady)}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
-              title={!contractsReady && scanDepth !== "instant" ? "Deploy contracts first" : undefined}
-            >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-              {busy ? "Scan in progress" : "Run Scan"}
-            </button>
-
             <CompactScanStatus stage={stage} state={context.state} error={context.error} isFree={context.isFree} failedStep={failedStep} />
           </Card>
 
@@ -376,11 +389,11 @@ export default function InstantScanPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div>
                 <p className="text-sm font-semibold text-[var(--text-primary)]">Instant Scan</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">First scan free per wallet, then 1 USDT.</p>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">First free, then 1 USDT per scan.</p>
               </div>
               <div>
                 <p className="text-sm font-semibold text-[var(--text-primary)]">Deep Scan</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">Always 3 USDT. No free trial.</p>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]">Locked. Coming soon.</p>
               </div>
             </div>
           </Card>
@@ -456,12 +469,34 @@ export default function InstantScanPage() {
                     <div className="mb-2 flex items-center gap-2">
                       <Badge tone={signal.severity} label={signal.severity} />
                       <span className="text-xs text-[var(--text-muted)]">{signal.type}</span>
+                      {signal.evidenceGrade && (
+                        <span
+                          className="rounded-[4px] border px-2 py-[2px] text-[0.62rem] font-semibold tracking-[0.08em]"
+                          style={{
+                            color: GRADE_STYLES[signal.evidenceGrade]?.color ?? "var(--text-muted)",
+                            borderColor: GRADE_STYLES[signal.evidenceGrade]?.color ?? "var(--border-dim)"
+                          }}
+                        >
+                          {GRADE_STYLES[signal.evidenceGrade]?.label ?? signal.evidenceGrade.toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm">{signal.evidence}</p>
                     <p className="mt-2 text-xs text-[var(--text-secondary)]">-&gt; {signal.recommendation}</p>
                   </Card>
                 ))}
               </div>
+
+              <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
+                  Limitations &amp; Confidence
+                </summary>
+                <ul className="mt-3 space-y-1 text-xs text-[var(--text-secondary)]">
+                  {result.report.limitations.map((item, idx) => (
+                    <li key={`${idx}-${item}`}>- {item}</li>
+                  ))}
+                </ul>
+              </details>
 
               <Card variant="glass" className="mt-6 p-5">
                 <p className="label-sm label-orange">On-chain scan receipt</p>

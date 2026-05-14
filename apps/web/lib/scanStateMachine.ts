@@ -1,6 +1,6 @@
 import type { RiskSignal, Severity } from "./heuristics";
 
-export type ScanDepth = "instant" | "deep";
+export type ScanDepth = "instant";
 
 export type ScanState =
   | "idle"

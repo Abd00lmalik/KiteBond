@@ -1,5 +1,6 @@
 import type { NpmPackageMeta } from "./npm";
 import { KNOWN_INCIDENTS } from "./knownIncidents";
+import type { TarballInspection } from "./tarball";
 
 export interface SecuritySignals {
   riskScore: number;
@@ -10,6 +11,7 @@ export interface SecurityFlag {
   code: string;
   severity: "critical" | "high" | "medium" | "low" | "info";
   message: string;
+  evidenceGrade: "confirmed" | "suspicious" | "heuristic" | "missing_data" | "historical";
 }
 
 const KNOWN_POPULAR = new Set([
@@ -170,7 +172,7 @@ const MALWARE_SCRIPT_PATTERNS = [
   /\bbase64\b.*\|\s*\bbash\b/i
 ];
 
-export function extractSignals(meta: NpmPackageMeta, packageInput: string): SecuritySignals {
+export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarball?: TarballInspection | null): SecuritySignals {
   const flags: SecurityFlag[] = [];
   let score = 0;
 
@@ -183,7 +185,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "KNOWN_INCIDENT",
       severity: incident.severity,
-      message: `${incident.summary}${incident.affectedVersions ? ` Affected: ${incident.affectedVersions}.` : ""} ${incident.recommendation}`
+      message: `${incident.summary}${incident.affectedVersions ? ` Affected: ${incident.affectedVersions}.` : ""} ${incident.recommendation}`,
+      evidenceGrade: "historical"
     });
     score += incident.severity === "critical" ? 50 : incident.severity === "high" ? 30 : incident.severity === "medium" ? 20 : 5;
   }
@@ -194,7 +197,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
       flags.push({
         code: "TYPOSQUAT_RISK",
         severity: "critical",
-        message: `Package name "${inputLower}" is ${distance} character(s) from well-known package "${known}". Possible typosquat.`
+        message: `Package name "${inputLower}" is ${distance} character(s) from well-known package "${known}". Possible typosquat.`,
+        evidenceGrade: "suspicious"
       });
       score += 45;
     }
@@ -204,7 +208,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "NO_REPOSITORY",
       severity: "medium",
-      message: "No repository URL listed. Source code cannot be independently verified."
+      message: "No repository URL listed. Source code cannot be independently verified.",
+      evidenceGrade: "missing_data"
     });
     score += 15;
   }
@@ -213,7 +218,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "NO_LICENSE",
       severity: "medium",
-      message: "No license declared. Usage rights are legally undefined."
+      message: "No license declared. Usage rights are legally undefined.",
+      evidenceGrade: "missing_data"
     });
     score += 12;
   }
@@ -224,14 +230,16 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "MALICIOUS_INSTALL_SCRIPT",
       severity: "critical",
-      message: "Install lifecycle script matches known malware patterns. Inspect before install."
+      message: "Install lifecycle script matches known malware patterns. Inspect before install.",
+      evidenceGrade: "confirmed"
     });
     score += 40;
   } else if (lifecycleScripts.length > 0) {
     flags.push({
       code: "HAS_INSTALL_SCRIPT",
       severity: "low",
-      message: "Package has install lifecycle script(s). Review script content before installing in sensitive environments."
+      message: "Package has install lifecycle script(s). Review script content before installing in sensitive environments.",
+      evidenceGrade: "heuristic"
     });
     score += 8;
   }
@@ -240,28 +248,32 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "NO_DOWNLOADS",
       severity: "high",
-      message: "Package has zero recorded downloads."
+      message: "Package has zero recorded downloads.",
+      evidenceGrade: "heuristic"
     });
     score += 25;
   } else if (!isTopPackage && meta.weeklyDownloads < 100) {
     flags.push({
       code: "VERY_LOW_DOWNLOADS",
       severity: "high",
-      message: `Only ${meta.weeklyDownloads} weekly downloads. Extremely low adoption.`
+      message: `Only ${meta.weeklyDownloads} weekly downloads. Extremely low adoption.`,
+      evidenceGrade: "heuristic"
     });
     score += 20;
   } else if (!isTopPackage && meta.weeklyDownloads < 1000) {
     flags.push({
       code: "LOW_DOWNLOADS",
       severity: "medium",
-      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads. Low community adoption.`
+      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads. Low community adoption.`,
+      evidenceGrade: "heuristic"
     });
     score += 12;
   } else if (!isTopPackage && meta.weeklyDownloads < 10_000) {
     flags.push({
       code: "MODERATE_DOWNLOADS",
       severity: "low",
-      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads - moderate adoption.`
+      message: `${meta.weeklyDownloads.toLocaleString()} weekly downloads - moderate adoption.`,
+      evidenceGrade: "heuristic"
     });
     score += 4;
   }
@@ -272,14 +284,16 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "VERY_NEW_PACKAGE",
       severity: "high",
-      message: "Package is less than 7 days old. Insufficient track record."
+      message: "Package is less than 7 days old. Insufficient track record.",
+      evidenceGrade: "heuristic"
     });
     score += 28;
   } else if (ageDays < 30) {
     flags.push({
       code: "RECENT_PACKAGE",
       severity: "medium",
-      message: "Package is less than 30 days old."
+      message: "Package is less than 30 days old.",
+      evidenceGrade: "heuristic"
     });
     score += 14;
   }
@@ -290,7 +304,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
       severity: "low",
       message: incident?.maintenanceConcern
         ? "Single maintainer with a documented package history concern. Succession risk for long-term projects."
-        : "Package has only one maintainer. Single point of compromise or abandonment."
+        : "Package has only one maintainer. Single point of compromise or abandonment.",
+      evidenceGrade: "heuristic"
     });
     score += 8;
   }
@@ -299,7 +314,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "NO_ACTIVE_MAINTENANCE",
       severity: "medium",
-      message: incident.maintenanceConcern
+      message: incident.maintenanceConcern,
+      evidenceGrade: "historical"
     });
     score += 12;
   }
@@ -308,14 +324,16 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "SINGLE_VERSION",
       severity: "medium",
-      message: "Only one version ever published. No history of maintenance."
+      message: "Only one version ever published. No history of maintenance.",
+      evidenceGrade: "heuristic"
     });
     score += 10;
   } else if (meta.totalVersions > 200) {
     flags.push({
       code: "VERY_HIGH_VERSION_COUNT",
       severity: "low",
-      message: `${meta.totalVersions} versions published. Unusual churn rate.`
+      message: `${meta.totalVersions} versions published. Unusual churn rate.`,
+      evidenceGrade: "heuristic"
     });
     score += 4;
   }
@@ -324,7 +342,8 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "HIGH_DEPENDENCY_COUNT",
       severity: "medium",
-      message: `${meta.dependencyCount} runtime dependencies. Large transitive attack surface.`
+      message: `${meta.dependencyCount} runtime dependencies. Large transitive attack surface.`,
+      evidenceGrade: "heuristic"
     });
     score += 12;
   }
@@ -333,9 +352,52 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string): Secu
     flags.push({
       code: "NO_DESCRIPTION",
       severity: "low",
-      message: "Package has no meaningful description. May indicate a placeholder or test package."
+      message: "Package has no meaningful description. May indicate a placeholder or test package.",
+      evidenceGrade: "missing_data"
     });
     score += 6;
+  }
+
+  if (tarball) {
+    if (tarball.hasBinaryFiles) {
+      flags.push({
+        code: "BINARY_FILES_IN_PACKAGE",
+        severity: "high",
+        message: "Package contains binary files. Binary artifacts in npm packages are a supply-chain risk vector.",
+        evidenceGrade: "confirmed"
+      });
+      score += 30;
+    }
+
+    if (tarball.hasHiddenFiles) {
+      flags.push({
+        code: "HIDDEN_FILES",
+        severity: "medium",
+        message: "Package contains hidden files (starting with .). Review before installation.",
+        evidenceGrade: "suspicious"
+      });
+      score += 12;
+    }
+
+    if (tarball.suspiciousExtensions.length > 0) {
+      flags.push({
+        code: "SCRIPT_FILES_IN_PACKAGE",
+        severity: "high",
+        message: `Package contains script files at root level: ${tarball.suspiciousExtensions.join(", ")}.`,
+        evidenceGrade: "confirmed"
+      });
+      score += 25;
+    }
+
+    if (tarball.fileCount > 500) {
+      flags.push({
+        code: "LARGE_FILE_COUNT",
+        severity: "low",
+        message: `Package contains ${tarball.fileCount} files. Unusually large package footprint.`,
+        evidenceGrade: "heuristic"
+      });
+      score += 5;
+    }
   }
 
   if (isTopPackage) {

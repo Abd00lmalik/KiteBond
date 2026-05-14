@@ -275,7 +275,7 @@ function TwoPathsSection() {
               icon={<FileSearch className="h-7 w-7" />}
               title="Instant Scan"
               text="Scan any npm package by name in seconds. Heurist AI analyzes metadata, signals, and risk. Report hash recorded on Kite."
-              features={["Free first scan", "Paid deeper tiers", "On-chain receipt"]}
+              features={["First scan free", "1 USDT after free scan", "On-chain receipt"]}
               href="/app/instant-scan"
               cta="Try Instant Scan"
             />

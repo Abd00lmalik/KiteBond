@@ -13,9 +13,16 @@ export interface NpmPackageMeta {
   maintainerCount: number;
   hasTypes: boolean;
   hasInstallScript: boolean;
+  scripts: Record<string, string>;
   dependencyCount: number;
   dependencies: Record<string, string>;
+  dependencyNames: string[];
   devDependencyCount: number;
+  devDependencies: Record<string, string>;
+  devDependencyNames: string[];
+  peerDependencyCount: number;
+  peerDependencies: Record<string, string>;
+  peerDependencyNames: string[];
   bundleSize: string | null;
   latestVersion: string;
   versionCount: number;
@@ -25,6 +32,7 @@ export interface NpmPackageMeta {
   keywords: string[];
   bugs: string | null;
   engines: Record<string, string> | null;
+  tarballUrl: string | null;
   deprecated: boolean;
   deprecationMessage: string | null;
   unpublished: boolean;
@@ -49,6 +57,7 @@ type NpmVersionDocument = {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
   keywords?: string[];
   bugs?: string | { url?: string };
   engines?: Record<string, string>;
@@ -114,6 +123,10 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
   const bugs = latestMeta.bugs;
   const deps = latestMeta.dependencies ?? {};
   const devDeps = latestMeta.devDependencies ?? {};
+  const peerDeps = latestMeta.peerDependencies ?? {};
+  const distTarball =
+    (latestMeta as NpmVersionDocument & { dist?: { tarball?: string } }).dist?.tarball ??
+    null;
   const timeMap = reg.time ?? {};
 
   return {
@@ -131,9 +144,16 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
     maintainerCount: maintainers.length,
     hasTypes: Boolean(latestMeta.types || latestMeta.typings || latestMeta.devDependencies?.typescript),
     hasInstallScript: installScripts.length > 0,
+    scripts,
     dependencyCount: Object.keys(deps).length,
     dependencies: deps,
+    dependencyNames: Object.keys(deps),
     devDependencyCount: Object.keys(devDeps).length,
+    devDependencies: devDeps,
+    devDependencyNames: Object.keys(devDeps),
+    peerDependencyCount: Object.keys(peerDeps).length,
+    peerDependencies: peerDeps,
+    peerDependencyNames: Object.keys(peerDeps),
     bundleSize: null,
     latestVersion: latest,
     versionCount: allVersions.length,
@@ -143,6 +163,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
     keywords: latestMeta.keywords ?? [],
     bugs: typeof bugs === "string" ? bugs : bugs?.url ?? null,
     engines: latestMeta.engines ?? null,
+    tarballUrl: distTarball,
     deprecated: Boolean(latestMeta.deprecated),
     deprecationMessage: latestMeta.deprecated ?? null,
     unpublished: Boolean(timeMap.unpublished),

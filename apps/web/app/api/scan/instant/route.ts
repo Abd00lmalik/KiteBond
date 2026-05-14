@@ -13,14 +13,15 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 40;
 
-type ScanDepth = "instant" | "deep";
+type ScanDepth = "instant";
 
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
       packageName?: string;
       version?: string;
-      scanDepth?: ScanDepth;
+      scanDepth?: string;
+      scanType?: string;
       walletAddress?: string;
       paymentTxHash?: string;
       onchainScanId?: string;
@@ -29,7 +30,14 @@ export async function POST(req: NextRequest) {
 
     const packageName = body.packageName?.trim();
     const version = body.version?.trim() || "latest";
-    const scanDepth = body.scanDepth || "instant";
+    const requestedType = (body.scanType ?? body.scanDepth ?? "instant").toLowerCase();
+    if (requestedType === "deep") {
+      return NextResponse.json(
+        { success: false, error: "Deep Scan is not yet available. Use Instant Scan for full analysis." },
+        { status: 400 }
+      );
+    }
+    const scanDepth: ScanDepth = "instant";
     const walletAddress = body.walletAddress;
     const isAgentSubmission = body.isAgentSubmission === true;
 
@@ -185,8 +193,7 @@ async function anchorScanProof(scanId: string, reportHash: string): Promise<{ an
 
 function getScanPrice(depth: string): string {
   const prices: Record<string, string> = {
-    instant: process.env.INSTANT_SCAN_INSTANT_PRICE || "1",
-    deep: process.env.INSTANT_SCAN_DEEP_PRICE || "3"
+    instant: process.env.INSTANT_SCAN_INSTANT_PRICE || "1"
   };
   return prices[depth] ?? "1";
 }

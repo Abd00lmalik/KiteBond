@@ -693,6 +693,99 @@ pre,
   transform: scale(1.4);
 }
 
+.scan-cards-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+@media (max-width: 640px) {
+  .scan-cards-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.scan-card-locked {
+  opacity: 0.55;
+  filter: saturate(0.3);
+  cursor: not-allowed;
+  pointer-events: none;
+  position: relative;
+}
+
+.scan-card-locked::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 8px,
+    rgba(0, 255, 100, 0.03) 8px,
+    rgba(0, 255, 100, 0.03) 9px
+  );
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.badge-live {
+  background: rgba(0, 255, 100, 0.12);
+  border: 1px solid rgba(0, 255, 100, 0.4);
+  color: var(--cyber-green);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.badge-soon {
+  background: rgba(155, 93, 229, 0.12);
+  border: 1px solid rgba(155, 93, 229, 0.35);
+  color: var(--cyber-purple);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.scan-bullet-locked {
+  color: var(--text-dim);
+  list-style: none;
+  padding-left: 1.2rem;
+  position: relative;
+  font-size: 0.82rem;
+  line-height: 1.8;
+}
+
+.scan-bullet-locked::before {
+  content: "\25CB";
+  position: absolute;
+  left: 0;
+  color: var(--text-dim);
+}
+
+.btn-scan-locked {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: not-allowed;
+  border-radius: 4px;
+}
+
 .proof-card {
   background: rgba(2, 2, 10, 0.9);
   border: 1px solid rgba(34, 197, 94, 0.2);

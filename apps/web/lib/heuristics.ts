@@ -16,6 +16,7 @@ export interface RiskSignal {
   severity: Severity;
   evidence: string;
   recommendation: string;
+  evidenceGrade?: "confirmed" | "suspicious" | "heuristic" | "missing_data" | "historical";
 }
 
 const POPULAR_PACKAGES = [

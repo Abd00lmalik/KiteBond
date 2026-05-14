@@ -8,12 +8,21 @@ import { toJsonValue } from "@/lib/json";
 import { fetchNpmMeta } from "@/lib/npm";
 import { verifyKitePaymentTx } from "@/lib/paymentVerification";
 import { extractSignals } from "@/lib/signals";
+import { inspectTarball, type TarballInspection } from "@/lib/tarball";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 40;
 
 type ScanStage = "auth" | "resolve" | "analyze" | "save";
+const REPORT_LIMITATIONS = [
+  "Analysis is static and metadata-based. No package code is executed.",
+  "Tarball inspection covers file names and sizes only, not file content.",
+  "Dependency tree coverage is currently direct dependencies only.",
+  "Risk score reflects available public signals and may miss private-registry behavior.",
+  "Historical incident coverage is limited to documented known cases in the local incident database.",
+  "Heurist AI analysis is probabilistic and should be validated before production deployment."
+];
 
 function stageError(stage: ScanStage, error: string, status = 500) {
   return NextResponse.json({ success: false, stage, error }, { status });
@@ -26,8 +35,8 @@ export async function POST(req: NextRequest) {
     address?: string;
     walletAddress?: string;
     version?: string;
-    scanType?: "instant" | "deep";
-    scanDepth?: "instant" | "deep";
+    scanType?: string;
+    scanDepth?: string;
     paymentTxHash?: string;
     onchainScanId?: string;
   };
@@ -46,10 +55,14 @@ export async function POST(req: NextRequest) {
   if (!packageName) return apiError("Package name is required.", 400);
 
   const address = (body.address ?? body.walletAddress ?? "").trim().toLowerCase() || "anonymous";
-  const scanDepth = body.scanType ?? body.scanDepth ?? "instant";
-  if (scanDepth !== "instant" && scanDepth !== "deep") {
-    return stageError("auth", "Invalid scan type. Choose Instant Scan or Deep Scan.", 400);
+  const rawScanType = (body.scanType ?? body.scanDepth ?? "instant").trim().toLowerCase();
+  if (rawScanType === "deep") {
+    return stageError("auth", "Deep Scan is not yet available. Use Instant Scan for full analysis.", 400);
   }
+  if (!["instant", "quick", "standard"].includes(rawScanType)) {
+    return stageError("auth", "Invalid scan type. Use Instant Scan.", 400);
+  }
+  const effectiveScanType = "instant";
 
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -65,22 +78,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let isFreeInstantScan = scanDepth === "instant";
-  let requiredPayment = scanDepth === "deep" ? 3_000_000 : 1_000_000;
+  let isFreeInstantScan = true;
+  let requiredPayment = 1_000_000;
 
   try {
     const usage = await prisma.userUsage.findUnique({ where: { walletAddress: address } });
-    isFreeInstantScan = scanDepth === "instant" && (!usage || usage.freeScansUsed === 0);
+    isFreeInstantScan = !usage || usage.freeScansUsed === 0;
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[Scan][Auth] userUsage lookup failed (non-fatal):", detail);
   }
-  requiredPayment = isFreeInstantScan ? 0 : scanDepth === "instant" ? 1_000_000 : 3_000_000;
+  requiredPayment = isFreeInstantScan ? 0 : 1_000_000;
 
   if (requiredPayment > 0 && !body.paymentTxHash) {
     return stageError(
       "auth",
-      scanDepth === "deep" ? "Payment required for Deep Scan." : "Payment required for Instant Scan after the first free scan.",
+      "Payment required. Approve 1 USDT before running your next scan.",
       402
     );
   }
@@ -128,7 +141,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const signals = extractSignals(meta, packageName);
+  let tarballInfo: TarballInspection | null = null;
+  try {
+    tarballInfo = await inspectTarball(meta.name, meta.version);
+  } catch (err) {
+    console.warn("[Scan] Tarball inspection failed (non-fatal):", err instanceof Error ? err.message : err);
+  }
+
+  const signals = extractSignals(meta, packageName, tarballInfo);
+  const tarballSection = tarballInfo
+    ? [
+        "Tarball inspection (file names/sizes only):",
+        `- File count: ${tarballInfo.fileCount}`,
+        `- Has binary files: ${tarballInfo.hasBinaryFiles}`,
+        `- Has hidden files: ${tarballInfo.hasHiddenFiles}`,
+        `- Suspicious script files at root: ${tarballInfo.suspiciousExtensions.join(", ") || "none"}`,
+        `- Total size: ${tarballInfo.totalSizeKb}KB`
+      ].join("\n")
+    : "Tarball inspection unavailable (size limit or fetch failure).";
 
   let heuristReport;
   try {
@@ -143,7 +173,7 @@ export async function POST(req: NextRequest) {
       licenseType: meta.license,
       hasInstallScript: meta.hasInstallScript,
       dependencyCount: meta.dependencyCount,
-      signalFlags: signals.flags.map((flag) => flag.message),
+      signalFlags: [...signals.flags.map((flag) => flag.message), tarballSection],
       signalScore: signals.riskScore
     });
   } catch (err) {
@@ -162,10 +192,20 @@ export async function POST(req: NextRequest) {
     : signals.riskScore;
   const riskLevel = scoreToSeverity(riskScore);
   const riskSignals: RiskSignal[] = signals.flags.map((flag) => ({
-    type: flag.code === "TYPOSQUAT_RISK" ? "typosquat" : flag.code.includes("INSTALL_SCRIPT") ? "install_script" : "metadata_signal",
+    type:
+      flag.code === "TYPOSQUAT_RISK"
+        ? "typosquat"
+        : flag.code.includes("INSTALL_SCRIPT")
+          ? "install_script"
+          : flag.code.includes("DEPENDENCY")
+            ? "dependency_risk"
+            : flag.code.includes("BINARY") || flag.code.includes("SCRIPT_FILES")
+              ? "tarball_signal"
+              : "metadata_signal",
     severity: flag.severity === "info" ? "low" : severityToRiskLevel(flag.severity),
     evidence: flag.message,
-    recommendation: recommendationForFlag(flag.code)
+    recommendation: recommendationForFlag(flag.code),
+    evidenceGrade: flag.evidenceGrade
   }));
 
   const report = {
@@ -179,15 +219,17 @@ export async function POST(req: NextRequest) {
       riskScore > 60 ? "avoid_until_manual_review" : riskScore >= 30 ? "use_with_caution" : "safe_to_review",
     confidence: heuristReport.heuristCalled ? 0.74 : 0.54,
     heuristCalled: heuristReport.heuristCalled,
-    limitations: heuristReport.heuristCalled ? [] : ["Heurist unavailable; deterministic fallback report returned."],
+    limitations: heuristReport.heuristCalled ? REPORT_LIMITATIONS : [...REPORT_LIMITATIONS, "Heurist unavailable; deterministic fallback report returned."],
     methodology: heuristReport.heuristCalled
-      ? "npm registry metadata, deterministic signal extraction, and Heurist chat-completions analysis"
-      : "npm registry metadata and deterministic signal extraction fallback",
+      ? "npm registry metadata, safe tarball filename inspection, deterministic signals, and Heurist chat-completions analysis"
+      : "npm registry metadata, safe tarball filename inspection, and deterministic signal fallback",
     metadata: {
       repository: meta.repository,
       license: meta.license,
       dependencyCount: meta.dependencyCount,
       hasInstallScripts: meta.hasInstallScript,
+      peerDependencyCount: meta.peerDependencyCount,
+      tarballInspection: tarballInfo,
       publishedAt: meta.publishedAt,
       maintainerCount: meta.maintainerCount,
       weeklyDownloads: meta.weeklyDownloads,
@@ -213,10 +255,10 @@ export async function POST(req: NextRequest) {
         packageName: meta.name,
         version: meta.version,
         packageVersion: meta.version,
-        scanDepth,
+        scanDepth: effectiveScanType,
         paid: requiredPayment > 0,
         isPaid: requiredPayment > 0,
-        amountPaid: requiredPayment > 0 ? (scanDepth === "deep" ? "3" : "1") : "0",
+        amountPaid: requiredPayment > 0 ? "1" : "0",
         paymentTx: body.paymentTxHash ?? null,
         scanId: scanId as string,
         proofHash,
@@ -266,9 +308,12 @@ function scoreToSeverity(score: number): Severity {
 }
 
 function recommendationForFlag(code: string) {
+  if (code === "KNOWN_INCIDENT") return "Review the documented incident, pin to safe versions, and consider migration.";
   if (code === "TYPOSQUAT_RISK") return "Verify package identity before install and compare against the known package.";
   if (code === "MALICIOUS_INSTALL_SCRIPT") return "Do not install until the lifecycle script is manually reviewed and verified benign.";
   if (code === "HAS_INSTALL_SCRIPT") return "Review lifecycle scripts manually before installing this package in sensitive environments.";
+  if (code === "BINARY_FILES_IN_PACKAGE") return "Audit binary artifacts and verify integrity before adopting this dependency.";
+  if (code === "SCRIPT_FILES_IN_PACKAGE") return "Review root-level script files and remove from trusted environments if unnecessary.";
   if (code === "NO_REPOSITORY") return "Treat source provenance as weak until repository ownership is verified.";
   if (code === "NO_LICENSE") return "Confirm legal usage terms before adopting this dependency.";
   return "Review this metadata signal before using the package in production.";

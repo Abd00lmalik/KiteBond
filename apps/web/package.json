@@ -26,6 +26,7 @@
     "react-countup": "^6.5.3",
     "react-dom": "18.3.1",
     "react-hot-toast": "^2.4.1",
+    "tar": "^7.5.15",
     "viem": "^2.21.45",
     "wagmi": "^2.12.30"
   },
