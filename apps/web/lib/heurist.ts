@@ -3,8 +3,9 @@ import type { NpmPackageMeta } from "./npm";
 
 const HEURIST_BASE = "https://llm-gateway.heurist.xyz";
 const HEURIST_MODEL = "meta-llama/llama-3.3-70b-instruct";
+const HEURIST_MESH_SEARCH_AGENT_URL = process.env.HEURIST_MESH_SEARCH_AGENT_URL?.trim() || "";
+const HEURIST_MESH_ASK_AGENT_URL = process.env.HEURIST_MESH_ASK_AGENT_URL?.trim() || "";
 const HEURIST_MESH_ENDPOINT = process.env.HEURIST_MESH_ENDPOINT?.trim() || "";
-const MESH_SEARCH_AGENT = "DuckDuckGoSearchAgent";
 
 type EvidenceGrade = "confirmed" | "suspicious" | "heuristic" | "missing_data" | "historical";
 type ReportSeverity = "critical" | "high" | "medium" | "low" | "clean";
@@ -171,7 +172,7 @@ function normalizeFindings(
 }
 
 function shouldRunMeshResearch(input: AnalysisInput): boolean {
-  if (input.signalScore >= 35) return true;
+  if (input.signalScore > 30) return true;
   return input.signalFlags.some((flag) =>
     /known incident|malicious|typosquat|account compromise|sabotage|binary files/i.test(flag)
   );
@@ -205,12 +206,9 @@ function flattenObjectText(value: unknown, acc: string[], depth = 0): void {
 }
 
 async function maybeFetchMeshIntel(packageName: string, input: AnalysisInput, apiKey: string): Promise<MeshIntel | null> {
-  if (!HEURIST_MESH_ENDPOINT) return null;
   if (!shouldRunMeshResearch(input)) return null;
 
-  const controller = new AbortController();
   const started = Date.now();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
   const query = [
     `npm package security incidents for ${packageName}`,
     `version ${input.version}`,
@@ -219,43 +217,170 @@ async function maybeFetchMeshIntel(packageName: string, input: AnalysisInput, ap
     "advisory"
   ].join(" ");
 
+  const meshUrls = [
+    HEURIST_MESH_SEARCH_AGENT_URL,
+    HEURIST_MESH_ASK_AGENT_URL,
+    HEURIST_MESH_ENDPOINT
+  ].filter(Boolean);
+  if (meshUrls.length === 0) return null;
+
+  for (const url of meshUrls) {
+    try {
+      const result = url.includes("/mcp/agents/")
+        ? await callMeshMcpAgent(url, apiKey, query)
+        : await callLegacyMeshEndpoint(url, apiKey, query);
+      if (!result) continue;
+      const evidenceLines = Array.from(new Set(result))
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter((line) => line.length > 20)
+        .slice(0, 6);
+      if (evidenceLines.length === 0) continue;
+      return {
+        source: url,
+        evidenceLines,
+        latencyMs: Date.now() - started
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[Heurist Mesh] optional call failed (${url}): ${message}`);
+    }
+  }
+
+  return null;
+}
+
+type MeshRpcResponse = { result?: Record<string, unknown>; error?: { message?: string; code?: number } };
+
+async function callMeshMcpAgent(url: string, apiKey: string, query: string): Promise<string[] | null> {
+  const init = await meshRpc(url, apiKey, "initialize", {
+    protocolVersion: "2024-11-05",
+    capabilities: {},
+    clientInfo: { name: "kitebond-scan", version: "1.0.0" }
+  });
+  if (init.error) return null;
+
+  const toolsList = await meshRpc(url, apiKey, "tools/list", {});
+  const tools = (toolsList.result?.tools as Array<{ name?: string; inputSchema?: Record<string, unknown> }> | undefined) ?? [];
+  if (tools.length === 0) return null;
+
+  const askTool = tools.find((tool) => /ask_heurist|ask/i.test(tool.name ?? ""));
+  const checkTool = tools.find((tool) => /check_job_status|status/i.test(tool.name ?? ""));
+  const searchTool =
+    tools.find((tool) => /search|digest|research/i.test(tool.name ?? "")) ??
+    tools.find((tool) => !/check_job_status/i.test(tool.name ?? ""));
+  const primary = askTool ?? searchTool;
+  if (!primary?.name) return null;
+
+  const primaryArgs = buildToolArguments(primary.inputSchema, query);
+  const call = await meshRpc(url, apiKey, "tools/call", { name: primary.name, arguments: primaryArgs });
+  const lines = extractMcpText(call);
+  if (lines.some((line) => /api key required|unknown tool/i.test(line))) return null;
+
+  if (askTool?.name === primary.name && checkTool?.name) {
+    const jobId = extractJobId(lines.join("\n"));
+    if (jobId) {
+      for (let i = 0; i < 3; i += 1) {
+        await delay(1800);
+        const poll = await meshRpc(url, apiKey, "tools/call", {
+          name: checkTool.name,
+          arguments: { job_id: jobId }
+        });
+        lines.push(...extractMcpText(poll));
+        if (lines.some((line) => /completed|answer|result/i.test(line)) && !lines.some((line) => /pending/i.test(line))) {
+          break;
+        }
+      }
+    }
+  }
+
+  return lines;
+}
+
+async function callLegacyMeshEndpoint(url: string, apiKey: string, query: string): Promise<string[] | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(HEURIST_MESH_ENDPOINT, {
+    const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-HEURIST-API-KEY": apiKey,
+        Authorization: `Bearer ${apiKey}`
+      },
       body: JSON.stringify({
         api_key: apiKey,
-        agent_id: MESH_SEARCH_AGENT,
         input: { query, max_results: 5 }
       }),
       signal: controller.signal
     });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      const body = await res.text();
-      console.warn(`[Heurist Mesh] ${MESH_SEARCH_AGENT} failed: ${res.status} ${body.slice(0, 220)}`);
-      return null;
-    }
+    if (!res.ok) return null;
     const payload = (await res.json()) as Record<string, unknown>;
     const lines: string[] = [];
     flattenObjectText(payload, lines);
-    const evidenceLines = Array.from(new Set(lines))
-      .map((line) => line.replace(/\s+/g, " ").trim())
-      .filter((line) => line.length > 20)
-      .slice(0, 6);
-
-    if (evidenceLines.length === 0) return null;
-    return {
-      source: MESH_SEARCH_AGENT,
-      evidenceLines,
-      latencyMs: Date.now() - started
-    };
-  } catch (error) {
+    return lines;
+  } finally {
     clearTimeout(timeout);
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[Heurist Mesh] ${MESH_SEARCH_AGENT} unavailable: ${message}`);
-    return null;
   }
+}
+
+async function meshRpc(url: string, apiKey: string, method: string, params: Record<string, unknown>): Promise<MeshRpcResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-HEURIST-API-KEY": apiKey,
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        method,
+        params
+      }),
+      signal: controller.signal
+    });
+    const json = (await res.json()) as MeshRpcResponse;
+    return json;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractMcpText(payload: MeshRpcResponse): string[] {
+  const content = (payload.result?.content as Array<{ type?: string; text?: string }> | undefined) ?? [];
+  return content
+    .filter((item) => item.type === "text" && typeof item.text === "string")
+    .map((item) => item.text as string);
+}
+
+function buildToolArguments(inputSchema: Record<string, unknown> | undefined, query: string): Record<string, unknown> {
+  const props = (inputSchema?.properties as Record<string, { type?: string }> | undefined) ?? {};
+  const args: Record<string, unknown> = {};
+  if ("prompt" in props) args.prompt = query;
+  if ("query" in props) args.query = query;
+  if ("search_term" in props) args.search_term = query;
+  if ("question" in props) args.question = query;
+  if ("mode" in props) args.mode = "normal";
+
+  if (Object.keys(args).length === 0) {
+    args.prompt = query;
+  }
+  return args;
+}
+
+function extractJobId(text: string): string | null {
+  const fromJson = text.match(/"job_id"\s*:\s*"([^"]+)"/i);
+  if (fromJson?.[1]) return fromJson[1];
+  const loose = text.match(/job[_\s-]?id["'\s:=]+([a-zA-Z0-9-]+)/i);
+  return loose?.[1] ?? null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildFallback(packageName: string, input: AnalysisInput, heuristCalled: boolean): HeuristScanReport {
