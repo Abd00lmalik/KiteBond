@@ -4,7 +4,7 @@ import { useEffect, useReducer, useState } from "react";
 import CountUp from "react-countup";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Copy, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Copy, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
@@ -76,27 +76,6 @@ export default function InstantScanPage() {
         reportHash: context.reportHash,
         scanId: context.scanId,
         onchainScanId: context.onchainScanId
-      }
-    : null;
-
-  const severityWeight: Record<Severity, number> = {
-    critical: 5,
-    high: 4,
-    medium: 3,
-    low: 2,
-    clean: 1
-  };
-  const topReasons = result?.report
-    ? [...result.report.signals]
-        .sort((a, b) => severityWeight[b.severity] - severityWeight[a.severity])
-        .slice(0, 5)
-    : [];
-  const groupedSignals = result?.report
-    ? {
-        incidents: result.report.signals.filter((signal) => /KNOWN_INCIDENT/i.test(signal.evidence)),
-        metadata: result.report.signals.filter((signal) => signal.type === "metadata_signal" || signal.type === "maintainer_signal" || signal.type === "repository_signal"),
-        scripts: result.report.signals.filter((signal) => signal.type === "install_script"),
-        dependencyAndFiles: result.report.signals.filter((signal) => signal.type === "dependency_risk" || signal.type === "tarball_signal" || signal.type === "typosquat")
       }
     : null;
 
@@ -300,69 +279,91 @@ export default function InstantScanPage() {
                 Deep Scan previews the upcoming runtime sandbox system and stays locked in this release.
               </p>
             </Card>
-            <div className="scan-cards-row-premium">
-              <motion.div
-                initial={{ opacity: 0, y: 24, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.45, ease: "easeOut" }}
-              >
-                <Card variant="green" interactive className="scan-card-premium scan-card-premium-live p-6">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Instant Scan</h3>
-                    <span className="badge-live">Live</span>
+
+            <div className="grid md:grid-cols-2 gap-8 w-full mx-auto mt-8">
+              <div className="relative group rounded-2xl bg-[#080812] border border-[#fb923c]/30 shadow-[0_0_30px_rgba(251,146,60,0.1)] transition-all hover:shadow-[0_0_50px_rgba(251,146,60,0.2)] overflow-hidden">
+                <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-[#fb923c] to-transparent opacity-80" />
+                <div className="absolute inset-0 bg-gradient-to-b from-[#fb923c]/5 to-transparent pointer-events-none" />
+                
+                <div className="p-8 relative z-10 flex flex-col h-full">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold tracking-wide text-white uppercase font-display">Instant Scan</h3>
+                    <span className="px-3 py-1 text-[10px] uppercase tracking-widest font-mono text-[#00ff64] bg-[#00ff64]/10 border border-[#00ff64]/30 rounded-full shadow-[0_0_10px_rgba(0,255,100,0.2)]">Live</span>
                   </div>
-                  <p className="scan-price-line">
-                    {quota.freeUsed ? "1 USDT · KiteAI Testnet" : "Your first scan is free"}
+                  
+                  <div className="mb-6 inline-flex items-center w-fit px-4 py-2 rounded-lg bg-black/40 border border-white/10 shadow-inner">
+                    <span className="font-mono text-sm tracking-wider text-gray-200">
+                      {quota.freeUsed ? "1 USDT · KiteAI Testnet" : "Your first scan is free"}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-400 leading-relaxed mb-8 flex-1">
+                    KiteBond&apos;s full safe npm security audit - registry intelligence, dependency analysis, script-risk detection, safe file-structure inspection, and Heurist-backed evidence reasoning. No package code executed.
                   </p>
-                  <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                    KiteBond&apos;s full safe npm security audit - registry intelligence, dependency analysis, script-risk
-                    detection, safe file-structure inspection, and Heurist-backed evidence reasoning.
-                  </p>
-                  <ul className="scan-feature-list mt-4 space-y-1 text-xs text-[var(--text-muted)]">
-                    <li>Registry metadata and version checks</li>
-                    <li>Maintainer, repository, and license signals</li>
-                    <li>Dependency and typosquat risk analysis</li>
-                    <li>Lifecycle script and malware-pattern detection</li>
-                    <li>Safe tarball and file-structure inspection</li>
-                    <li>Heurist-powered evidence report</li>
+
+                  <ul className="space-y-3 mb-8">
+                    {[
+                      "Registry metadata and version checks",
+                      "Maintainer, repository, and license signals",
+                      "Dependency and typosquat risk analysis",
+                      "Lifecycle script and malware-pattern detection",
+                      "Safe tarball and file-structure inspection",
+                      "Known incident intelligence with version matching",
+                      "Heurist forensic investigation"
+                    ].map(feat => (
+                      <li key={feat} className="flex items-start gap-3 text-sm text-gray-300">
+                        <ShieldCheck className="w-5 h-5 text-[#00ff64] shrink-0" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
                   </ul>
+
                   <button
-                    type="button"
                     onClick={() => setMode("instant")}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)]"
+                    className="w-full py-4 rounded-xl bg-gradient-to-r from-[#fb923c] to-[#f97316] text-black font-bold uppercase tracking-wider text-sm transition-all hover:opacity-90 shadow-[0_0_20px_rgba(251,146,60,0.4)]"
                   >
-                    <ShieldCheck className="h-4 w-4" />
                     Start Scan
                   </button>
-                </Card>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, y: -24, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.45, ease: "easeOut", delay: 0.05 }}
-              >
-                <Card className="scan-card-premium scan-card-premium-locked p-6">
-                  <div className="relative z-[2] mb-3 flex items-center justify-between gap-3">
-                    <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Deep Scan</h3>
-                    <span className="badge-soon">Coming Soon</span>
+                </div>
+              </div>
+
+              <div className="relative rounded-2xl bg-[#03030a] border border-white/5 shadow-lg overflow-hidden">
+                <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(255,255,255,0.02)_8px,rgba(255,255,255,0.02)_9px)] pointer-events-none" />
+                
+                <div className="p-8 relative z-10 flex flex-col h-full opacity-60">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold tracking-wide text-gray-400 uppercase font-display">Deep Scan</h3>
+                    <span className="px-3 py-1 text-[10px] uppercase tracking-widest font-mono text-[#9b5de5] bg-[#9b5de5]/10 border border-[#9b5de5]/30 rounded-full">Coming Soon</span>
                   </div>
-                  <p className="scan-price-line relative z-[2]">Locked</p>
-                  <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">
+                  
+                  <div className="mb-6 inline-flex items-center w-fit px-4 py-2 rounded-lg bg-black/40 border border-white/5 shadow-inner">
+                    <span className="font-mono text-sm tracking-wider text-gray-500">Locked</span>
+                  </div>
+
+                  <p className="text-sm text-gray-500 leading-relaxed mb-8 flex-1">
                     Future runtime analysis for high-risk packages using isolated sandbox workers, behavioral tracing, runtime monitoring, and defensive verification tests.
                   </p>
-                  <ul className="relative z-[2] mt-4 space-y-1">
-                    <li className="scan-bullet-locked">Isolated dynamic sandbox execution</li>
-                    <li className="scan-bullet-locked">Behavioral trace capture</li>
-                    <li className="scan-bullet-locked">Runtime package monitoring</li>
-                    <li className="scan-bullet-locked">Defensive verification tests</li>
-                    <li className="scan-bullet-locked">Execution proof and attestation</li>
+
+                  <ul className="space-y-3 mb-8">
+                    {[
+                      "Isolated dynamic sandbox execution",
+                      "Behavioral trace capture",
+                      "Runtime package monitoring",
+                      "Defensive verification tests",
+                      "Execution proof and attestation"
+                    ].map(feat => (
+                      <li key={feat} className="flex items-start gap-3 text-sm text-gray-500">
+                        <Lock className="w-4 h-4 mt-0.5 text-gray-600 shrink-0" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
                   </ul>
-                  <button type="button" disabled className="btn-scan-locked relative z-[2] mt-5">
-                    <Lock className="mr-2 inline h-3.5 w-3.5" />
-                    Locked - Coming Soon
+
+                  <button disabled className="w-full py-4 rounded-xl bg-white/5 text-gray-500 font-bold uppercase tracking-wider text-sm border border-white/10 cursor-not-allowed flex items-center justify-center gap-2">
+                    <Lock className="w-4 h-4" /> Locked
                   </button>
-                </Card>
-              </motion.div>
+                </div>
+              </div>
             </div>
           </motion.div>
         ) : (
@@ -461,20 +462,6 @@ export default function InstantScanPage() {
             <CompactScanStatus stage={stage} state={context.state} error={context.error} isFree={context.isFree} failedStep={failedStep} />
           </Card>
 
-          <Card className="p-5">
-            <p className="label-sm label-orange">Pricing</p>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Instant Scan</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">First free, then 1 USDT per scan.</p>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Deep Scan</p>
-                <p className="mt-1 text-xs text-[var(--text-secondary)]">Locked. Coming soon.</p>
-              </div>
-            </div>
-          </Card>
-
         </div>
 
         <div className="space-y-5">
@@ -490,104 +477,18 @@ export default function InstantScanPage() {
 
           {result?.report && result.reportHash && (
             <Card variant="green" className="p-6">
-              <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+              <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start border-b border-[var(--border-dim)] pb-5">
                 <div>
                   <p className="label-sm text-[var(--green)]">Report</p>
                   <h2 className="mt-2 text-3xl package-name">
                     {result.report.packageName}@{result.report.version}
                   </h2>
                 </div>
-                <Badge tone={result.report.riskLevel} label={result.report.riskLevel} />
-              </div>
-              <div className="mt-6 grid gap-5 md:grid-cols-[170px_1fr]">
-                <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] p-5 text-center">
-                  <p className="label-sm">Risk Score</p>
-                  <p className="mt-3 text-5xl font-bold text-[var(--text-primary)]">
-                    <CountUp end={result.report.riskScore} duration={1} />
-                  </p>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-5">
-                  <p className="text-sm text-[var(--text-primary)]">
-                    {buildVerdictLine(result.report.riskLevel, result.report.packageName, result.report.version)}
-                  </p>
-                  <p className="mt-2 text-sm text-[var(--text-secondary)]">{result.report.summary}</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge tone="verified" label={formatRecommendation(result.report.finalRecommendation)} />
-                    <Badge tone="pending" label={`confidence ${Math.round(result.report.confidence * 100)}%`} />
-                  </div>
-                </div>
               </div>
 
-              <div className="mt-6">
-                <p className="label-sm text-[var(--green)]">Why this score</p>
-                <div className="mt-3 grid gap-3">
-                  {topReasons.map((reason, index) => (
-                    <Card key={`${reason.type}-${index}`} variant="glass" className="p-4">
-                      <div className="mb-2 flex items-center gap-2">
-                        <Badge tone={reason.severity} label={reason.severity} />
-                      </div>
-                      <p className="text-sm text-[var(--text-primary)]">{reason.evidence}</p>
-                      <p className="mt-2 text-xs text-[var(--text-secondary)]">{reason.recommendation}</p>
-                    </Card>
-                  ))}
-                </div>
-              </div>
+              <ReportSlideshow report={result.report} />
 
-              <div className="mt-6 grid gap-4">
-                <EvidenceGroup title="Known Incidents" items={groupedSignals?.incidents ?? []} />
-                <EvidenceGroup title="Metadata & Maintainer Signals" items={groupedSignals?.metadata ?? []} />
-                <EvidenceGroup title="Lifecycle Script Findings" items={groupedSignals?.scripts ?? []} />
-                <EvidenceGroup title="Dependency & File Signals" items={groupedSignals?.dependencyAndFiles ?? []} />
-                <div>
-                  <p className="label-sm text-[var(--green)]">Heurist Investigation Summary</p>
-                  {result.report.findings && result.report.findings.length > 0 ? (
-                    <div className="mt-3 grid gap-3">
-                      {result.report.findings.slice(0, 5).map((finding, index) => (
-                        <Card key={`${finding.claim}-${index}`} variant="glass" className="p-4">
-                          <p className="text-sm text-[var(--text-primary)]">{finding.claim}</p>
-                          <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidenceSource}</p>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <Card variant="glass" className="mt-3 p-4">
-                      <p className="text-sm text-[var(--text-secondary)]">No additional investigative claims were promoted beyond deterministic evidence.</p>
-                    </Card>
-                  )}
-                </div>
-              </div>
-
-              <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
-                  Audit Scope
-                </summary>
-                <ul className="mt-3 space-y-1 text-xs text-[var(--text-secondary)]">
-                  {result.report.limitations.map((item, idx) => (
-                    <li key={`${idx}-${item}`}>{item}</li>
-                  ))}
-                </ul>
-              </details>
-
-              <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[rgba(255,255,255,0.02)] p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
-                  Technical Details
-                </summary>
-                <div className="mt-3 space-y-3 text-xs text-[var(--text-secondary)]">
-                  <p>AI model: Heurist Llama-3.3-70B (gateway)</p>
-                  <p>Heurist called: {result.report.heuristCalled ? "yes" : "no"}</p>
-                  <p>Methodology: {result.report.methodology}</p>
-                  {result.report.signals.map((signal, index) => (
-                    <div key={`${signal.type}-raw-${index}`} className="rounded-[var(--radius-sm)] border border-[var(--border-dim)] p-2">
-                      <p className="font-mono text-[0.68rem] text-[var(--text-muted)]">
-                        {signal.type} · {signal.evidenceGrade ?? "n/a"} · {signal.severity}
-                      </p>
-                      <p className="mt-1">{signal.evidence}</p>
-                    </div>
-                  ))}
-                </div>
-              </details>
-
-              <Card variant="glass" className="mt-6 p-5">
+              <Card variant="glass" className="mt-8 p-5 border-t border-[var(--border-dim)]">
                 <p className="label-sm label-orange">On-chain scan receipt</p>
                 <p className="mt-3 text-sm text-[var(--text-secondary)]">
                   Only the report hash and payment reference are stored on Kite. The full report stays readable in the app.
@@ -640,40 +541,168 @@ export default function InstantScanPage() {
   );
 }
 
-function EvidenceGroup({
-  title,
-  items
-}: {
-  title: string;
-  items: ScanReport["signals"];
-}) {
-  return (
-    <div>
-      <p className="label-sm text-[var(--green)]">{title}</p>
-      {items.length === 0 ? (
-        <Card variant="glass" className="mt-3 p-4">
-          <p className="text-sm text-[var(--text-secondary)]">No material findings were promoted in this section.</p>
-        </Card>
-      ) : (
-        <div className="mt-3 grid gap-3">
-          {items.map((signal, index) => (
-            <Card
-              key={`${title}-${signal.type}-${index}`}
-              className="p-4"
-              style={{
-                borderColor: riskColors[signal.severity].border,
-                background: riskColors[signal.severity].bg
-              }}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <Badge tone={signal.severity} label={signal.severity} />
+function ReportSlideshow({ report }: { report: ScanReport }) {
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const severityWeight: Record<Severity, number> = {
+    critical: 5,
+    high: 4,
+    medium: 3,
+    low: 2,
+    clean: 1
+  };
+
+  const topReasons = [...report.signals]
+    .sort((a, b) => severityWeight[b.severity] - severityWeight[a.severity])
+    .slice(0, 5);
+
+  const groupedSignals = {
+    incidents: report.signals.filter((signal) => /KNOWN_INCIDENT/i.test(signal.evidence)),
+    metadata: report.signals.filter((signal) => signal.type === "metadata_signal" || signal.type === "maintainer_signal" || signal.type === "repository_signal"),
+    scripts: report.signals.filter((signal) => signal.type === "install_script"),
+    dependencyAndFiles: report.signals.filter((signal) => signal.type === "dependency_risk" || signal.type === "tarball_signal" || signal.type === "typosquat")
+  };
+
+  const slides = [
+    {
+      title: "Verdict",
+      content: (
+        <div className="flex flex-col items-center text-center mt-6">
+          <div className="mb-4">
+            <Badge tone={report.riskLevel} label={report.riskLevel.toUpperCase()} />
+          </div>
+          <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-glass)] p-5 w-full max-w-sm mb-6">
+            <p className="label-sm text-[var(--text-secondary)]">Risk Score</p>
+            <p className="mt-2 text-7xl font-bold text-[var(--text-primary)]">
+              <CountUp end={report.riskScore} duration={1} />
+            </p>
+          </div>
+          <p className="text-lg text-[var(--text-primary)] font-medium max-w-lg">
+            {buildVerdictLine(report.riskLevel, report.packageName, report.version)}
+          </p>
+          <p className="mt-4 text-sm text-[var(--text-secondary)] max-w-lg leading-relaxed">{report.summary}</p>
+        </div>
+      )
+    },
+    {
+      title: "Why This Score",
+      content: (
+        <div className="grid gap-3">
+          {topReasons.map((reason, index) => (
+            <Card key={`reason-${index}`} variant="glass" className="p-4" style={{ borderColor: riskColors[reason.severity].border, background: riskColors[reason.severity].bg }}>
+              <div className="mb-2">
+                <Badge tone={reason.severity} label={reason.severity} />
               </div>
-              <p className="text-sm text-[var(--text-primary)]">{signal.evidence}</p>
-              <p className="mt-2 text-xs text-[var(--text-secondary)]">{signal.recommendation}</p>
+              <p className="text-sm text-[var(--text-primary)] font-medium">{reason.evidence}</p>
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">{reason.recommendation}</p>
             </Card>
           ))}
+          {topReasons.length === 0 && (
+            <div className="text-center mt-12">
+              <ShieldCheck className="mx-auto h-12 w-12 text-[var(--green)] opacity-50 mb-4" />
+              <p className="text-sm text-[var(--text-secondary)]">No significant risk factors identified for this package.</p>
+            </div>
+          )}
         </div>
-      )}
+      )
+    },
+    {
+      title: "Known Incident Intelligence",
+      content: <SlideSignalList items={groupedSignals.incidents} emptyMessage="No known incidents recorded for this package version." />
+    },
+    {
+      title: "Package Identity",
+      content: <SlideSignalList items={groupedSignals.metadata} emptyMessage="Identity and metadata signals are clean." />
+    },
+    {
+      title: "Script & File Signals",
+      content: <SlideSignalList items={groupedSignals.scripts} emptyMessage="No suspicious lifecycle scripts detected." />
+    },
+    {
+      title: "Dependency & Typosquat Risk",
+      content: <SlideSignalList items={groupedSignals.dependencyAndFiles} emptyMessage="No dependency or typosquat risks identified." />
+    },
+    {
+      title: "Recommendation",
+      content: (
+        <div className="flex flex-col items-center text-center mt-8">
+          <Badge tone="verified" label={formatRecommendation(report.finalRecommendation)} />
+          <p className="mt-6 text-base text-[var(--text-primary)] font-medium max-w-md">
+            Confidence: {Math.round(report.confidence * 100)}%
+          </p>
+          <p className="mt-4 text-sm text-[var(--text-secondary)] max-w-lg leading-relaxed">
+            Based on the combined deterministic signals and heuristic analysis, the recommended action for this package is highlighted above. Always ensure your environment matches your security posture before proceeding with installation.
+          </p>
+        </div>
+      )
+    }
+  ];
+
+  const next = () => setCurrentSlide(c => Math.min(c + 1, slides.length - 1));
+  const prev = () => setCurrentSlide(c => Math.max(c - 1, 0));
+
+  return (
+    <div className="mt-8">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-xl font-bold font-display tracking-wide text-[var(--text-primary)]">{slides[currentSlide].title}</h3>
+        <div className="text-xs font-mono font-bold text-[var(--text-muted)] bg-[var(--bg-glass)] px-3 py-1.5 rounded-full border border-[var(--border-dim)]">
+          {currentSlide + 1} / {slides.length}
+        </div>
+      </div>
+      
+      {/* Progress Bar */}
+      <div className="mb-8 flex gap-1.5 h-1.5 w-full">
+        {slides.map((_, idx) => (
+          <div key={idx} className={`flex-1 rounded-full transition-colors duration-300 ${idx <= currentSlide ? 'bg-[var(--cyber-green)] shadow-[0_0_8px_rgba(0,255,100,0.4)]' : 'bg-[var(--border-dim)]'}`} />
+        ))}
+      </div>
+
+      <div className="min-h-[380px] relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentSlide}
+            initial={{ opacity: 0, x: 15 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -15 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+          >
+            {slides[currentSlide].content}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <div className="mt-10 flex justify-between pt-5 border-t border-[var(--border-dim)]">
+        <button onClick={prev} disabled={currentSlide === 0} className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--bg-glass)] border border-[var(--border-default)] px-5 py-2.5 text-sm font-semibold text-[var(--text-secondary)] transition-all hover:bg-[var(--bg-surface)] hover:text-white disabled:opacity-30 disabled:hover:bg-[var(--bg-glass)] disabled:hover:text-[var(--text-secondary)]">
+          <ChevronLeft className="h-4 w-4" /> Previous
+        </button>
+        <button onClick={next} disabled={currentSlide === slides.length - 1} className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--bg-card-hover)] border border-[var(--border-default)] px-5 py-2.5 text-sm font-semibold text-[var(--text-primary)] transition-all hover:border-[var(--cyber-green)] hover:text-[var(--cyber-green)] disabled:opacity-30 disabled:hover:border-[var(--border-default)] disabled:hover:text-[var(--text-primary)]">
+          Next <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SlideSignalList({ items, emptyMessage }: { items: ScanReport["signals"], emptyMessage: string }) {
+  if (items.length === 0) {
+    return (
+      <div className="text-center mt-12">
+        <ShieldCheck className="mx-auto h-12 w-12 text-[var(--green)] opacity-50 mb-4" />
+        <p className="text-sm text-[var(--text-secondary)]">{emptyMessage}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-3">
+      {items.map((signal, index) => (
+        <Card key={index} variant="glass" className="p-4" style={{ borderColor: riskColors[signal.severity].border, background: riskColors[signal.severity].bg }}>
+          <div className="mb-2">
+            <Badge tone={signal.severity} label={signal.severity} />
+          </div>
+          <p className="text-sm text-[var(--text-primary)] font-medium">{signal.evidence}</p>
+          <p className="mt-2 text-xs text-[var(--text-secondary)]">{signal.recommendation}</p>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -695,7 +724,7 @@ function buildVerdictLine(level: Severity, packageName: string, version: string)
 }
 
 function formatRecommendation(value: ScanReport["finalRecommendation"]) {
-  return value.replace(/_/g, " ");
+  return value.replace(/_/g, " ").toUpperCase();
 }
 
 function getFailedStep(err: unknown): CompactStepKey {
