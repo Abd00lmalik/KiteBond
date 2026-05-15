@@ -273,10 +273,10 @@ export default function InstantScanPage() {
         {mode === "select" ? (
           <motion.div
             key="mode-select"
-            initial={{ opacity: 0, y: -22, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            initial={{ opacity: 0, y: -22 }}
+            animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
             className="mx-auto w-full max-w-[980px]"
           >
             <Card variant="glass" className="mb-5 border-[var(--border-orange)] bg-[linear-gradient(180deg,rgba(12,12,26,0.92),rgba(8,8,18,0.9))] p-7">
@@ -299,7 +299,7 @@ export default function InstantScanPage() {
                     <span className="badge-live">Live</span>
                   </div>
                   <p className="scan-price-line">
-                    {quota.freeUsed ? "1 USDT per scan after free unlock" : "First scan free - 1 USDT per scan after"}
+                    {quota.freeUsed ? "1 USDT · KiteAI Testnet" : "Your first scan is free"}
                   </p>
                   <p className="mt-3 text-sm text-[var(--text-secondary)]">
                     KiteBond&apos;s full safe npm security audit - registry intelligence, dependency analysis, script-risk
@@ -367,7 +367,7 @@ export default function InstantScanPage() {
               <div className="flex items-center gap-3">
                 <span className="badge-live">Instant Scan</span>
                 <p className="text-xs text-[var(--text-secondary)]">
-                  {quota.freeUsed ? "1 USDT per scan - KiteAI Testnet" : "Your first scan is free"}
+                  {quota.freeUsed ? "1 USDT · KiteAI Testnet" : "Your first scan is free"}
                 </p>
               </div>
               <button

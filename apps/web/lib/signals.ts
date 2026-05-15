@@ -1,5 +1,5 @@
 import type { NpmPackageMeta } from "./npm";
-import { KNOWN_INCIDENTS, isIncidentVersionAffected } from "./knownIncidents";
+import { matchKnownIncidents } from "./knownIncidents";
 import type { TarballInspection } from "./tarball";
 
 export interface SecuritySignals {
@@ -187,24 +187,34 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
   const nameLower = meta.name.toLowerCase();
   const isTopPackage = TOP_PACKAGES.has(inputLower) || TOP_PACKAGES.has(nameLower);
 
-  const incident = KNOWN_INCIDENTS[nameLower];
-  if (incident) {
-    const affectedVersion = isIncidentVersionAffected(meta.version, incident);
+  const incidentMatches = matchKnownIncidents(nameLower, meta.version);
+  const activeIncidents = incidentMatches.filter((item) => item.status === "active");
+  const historicalIncidents = incidentMatches.filter((item) => item.status === "historical");
+
+  for (const match of activeIncidents) {
+    flags.push({
+      code: "KNOWN_INCIDENT_ACTIVE",
+      severity: match.incident.incidentType === "historical_vulnerability" ? "high" : "critical",
+      message: `${match.incident.summary} Active impact: scanned version ${meta.version} matches affected rule ${match.matchedRule ?? "documented affected set"}. Recommended action: ${match.incident.recommendation} Source: ${match.incident.source}`,
+      evidenceGrade: "historical"
+    });
+    score += match.incident.activeSeverityContribution;
+  }
+
+  for (const match of historicalIncidents) {
     const historicalSeverity: SecurityFlag["severity"] =
-      incident.incidentType === "historical_vulnerability"
+      match.incident.incidentType === "historical_vulnerability"
         ? "low"
-        : incident.severityContribution >= 70
+        : match.incident.severityContribution >= 70
           ? "high"
           : "medium";
     flags.push({
-      code: "KNOWN_INCIDENT",
-      severity: affectedVersion ? "critical" : historicalSeverity,
-      message: `${incident.summary}${incident.affectedVersions?.length ? ` Affected versions: ${incident.affectedVersions.join(", ")}.` : ""} ${
-        affectedVersion ? "The scanned version appears to match an affected range." : "No direct affected-version match was detected for this scan."
-      } ${incident.recommendation}${incident.source ? ` Source: ${incident.source}` : ""}`,
+      code: "KNOWN_INCIDENT_HISTORY",
+      severity: historicalSeverity,
+      message: `${match.incident.summary} Historical context only: scanned version ${meta.version} is outside documented affected versions. Recommended action: ${match.incident.recommendation} Source: ${match.incident.source}`,
       evidenceGrade: "historical"
     });
-    score += affectedVersion ? incident.affectedSeverityContribution : incident.severityContribution;
+    score += match.incident.severityContribution;
   }
 
   const typosquatCandidate = getTyposquatCandidate(inputLower);
@@ -325,7 +335,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
     flags.push({
       code: "SINGLE_MAINTAINER",
       severity: "low",
-      message: incident?.maintenanceConcern
+      message: historicalIncidents[0]?.incident.maintenanceConcern || activeIncidents[0]?.incident.maintenanceConcern
         ? "Single maintainer with a documented package history concern. Succession risk for long-term projects."
         : "Package has only one maintainer. Single point of compromise or abandonment.",
       evidenceGrade: "heuristic"
@@ -333,11 +343,24 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
     score += 8;
   }
 
-  if (incident?.maintenanceConcern) {
+  if (meta.maintainerCount === 0) {
+    flags.push({
+      code: "MAINTAINER_DATA_MISSING",
+      severity: "medium",
+      message: "No maintainer identity is listed in registry metadata.",
+      evidenceGrade: "missing_data"
+    });
+    score += 12;
+  }
+
+  const maintenanceConcern =
+    activeIncidents.find((item) => item.incident.maintenanceConcern)?.incident.maintenanceConcern ??
+    historicalIncidents.find((item) => item.incident.maintenanceConcern)?.incident.maintenanceConcern;
+  if (maintenanceConcern) {
     flags.push({
       code: "NO_ACTIVE_MAINTENANCE",
       severity: "medium",
-      message: incident.maintenanceConcern,
+      message: maintenanceConcern,
       evidenceGrade: "historical"
     });
     score += 12;
@@ -370,6 +393,21 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       evidenceGrade: "heuristic"
     });
     score += 4;
+  }
+
+  const firstPublish = meta.firstPublishedAt ? new Date(meta.firstPublishedAt) : null;
+  const latestPublish = meta.publishedAt ? new Date(meta.publishedAt) : null;
+  if (firstPublish && latestPublish && !Number.isNaN(firstPublish.getTime()) && !Number.isNaN(latestPublish.getTime())) {
+    const lifespanDays = (latestPublish.getTime() - firstPublish.getTime()) / 86_400_000;
+    if (lifespanDays < 14 && meta.totalVersions >= 5) {
+      flags.push({
+        code: "BURST_RELEASE_PATTERN",
+        severity: "medium",
+        message: `Published ${meta.totalVersions} versions within ${Math.round(lifespanDays)} days. Review release cadence for abnormal churn.`,
+        evidenceGrade: "suspicious"
+      });
+      score += 10;
+    }
   }
 
   if (meta.dependencyCount > 30) {
@@ -434,6 +472,37 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       score += 25;
     }
 
+    if (tarball.suspiciousFileNames.length > 0) {
+      flags.push({
+        code: "SUSPICIOUS_FILE_NAMES",
+        severity: "medium",
+        message: `Suspicious file naming patterns detected: ${tarball.suspiciousFileNames.slice(0, 5).join(", ")}.`,
+        evidenceGrade: "suspicious"
+      });
+      score += 10;
+    }
+
+    if (tarball.hasObfuscatedJs) {
+      flags.push({
+        code: "OBFUSCATED_JS_BUNDLE",
+        severity: "medium",
+        message: "Large minified or bundled JavaScript artifacts detected. Validate source provenance before install.",
+        evidenceGrade: "heuristic"
+      });
+      score += 12;
+    }
+
+    if (tarball.suspiciousTextFindings.length > 0) {
+      const severity: SecurityFlag["severity"] = tarball.suspiciousTextFindings.length >= 2 ? "critical" : "high";
+      flags.push({
+        code: "SUSPICIOUS_TEXT_PATTERN",
+        severity,
+        message: `Suspicious script/code patterns were found in package text files: ${tarball.suspiciousTextFindings.slice(0, 4).join(" | ")}.`,
+        evidenceGrade: "confirmed"
+      });
+      score += severity === "critical" ? 38 : 24;
+    }
+
     if (tarball.fileCount > 500) {
       flags.push({
         code: "LARGE_FILE_COUNT",
@@ -448,7 +517,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
   if (isTopPackage) {
     score = Math.max(0, score - 25);
     const filteredFlags = flags.filter(
-      (flag) => flag.severity === "critical" || flag.severity === "high" || (flag.code === "KNOWN_INCIDENT" && flag.severity !== "low")
+      (flag) => flag.severity === "critical" || flag.severity === "high" || (flag.code.startsWith("KNOWN_INCIDENT") && flag.severity !== "low")
     );
     return { riskScore: Math.min(100, score), flags: filteredFlags };
   }

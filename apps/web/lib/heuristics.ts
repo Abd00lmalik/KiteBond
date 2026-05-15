@@ -1,5 +1,5 @@
 import type { NpmPackageMeta } from "./npm";
-import { KNOWN_INCIDENTS, isIncidentVersionAffected } from "./knownIncidents";
+import { matchKnownIncidents } from "./knownIncidents";
 
 export type Severity = "clean" | "low" | "medium" | "high" | "critical";
 
@@ -76,17 +76,28 @@ function levenshtein(a: string, b: string): number {
 export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
   const signals: RiskSignal[] = [];
   const isPopular = POPULAR_PACKAGES.includes(meta.name.toLowerCase());
-  const incident = KNOWN_INCIDENTS[meta.name.toLowerCase()];
-
-  if (incident) {
-    const affected = isIncidentVersionAffected(meta.version, incident);
-    const incidentSeverity: Severity =
-      affected ? "critical" : incident.incidentType === "historical_vulnerability" ? "low" : incident.historicalScore >= 70 ? "high" : "medium";
+  const incidentMatches = matchKnownIncidents(meta.name.toLowerCase(), meta.version);
+  const primaryIncident = incidentMatches[0];
+  for (const match of incidentMatches) {
+    const severity: Severity =
+      match.status === "active"
+        ? match.incident.incidentType === "historical_vulnerability"
+          ? "high"
+          : "critical"
+        : match.incident.incidentType === "historical_vulnerability"
+          ? "low"
+          : match.incident.severityContribution >= 70
+            ? "high"
+            : "medium";
     signals.push({
       type: "metadata_signal",
-      severity: incidentSeverity,
-      evidence: `${incident.summary}${incident.affectedVersions?.length ? ` Affected: ${incident.affectedVersions.join(", ")}.` : ""} ${incident.recommendation}`,
-      recommendation: incident.recommendation
+      severity,
+      evidence:
+        match.status === "active"
+          ? `${match.incident.summary} Active version match: ${meta.version} matches ${match.matchedRule ?? "documented affected versions"}.`
+          : `${match.incident.summary} Historical context: ${meta.version} does not match documented affected versions.`,
+      recommendation: match.incident.recommendation,
+      evidenceGrade: "historical"
     });
   }
 
@@ -211,12 +222,13 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
     });
   }
 
-  if (incident?.maintenanceConcern) {
+  if (primaryIncident?.incident.maintenanceConcern) {
     signals.push({
       type: "maintainer_signal",
       severity: "medium",
-      evidence: incident.maintenanceConcern,
-      recommendation: incident.recommendation
+      evidence: primaryIncident.incident.maintenanceConcern,
+      recommendation: primaryIncident.incident.recommendation,
+      evidenceGrade: "historical"
     });
   }
 

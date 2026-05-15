@@ -21,16 +21,19 @@ type TarballInspection = {
   hasObfuscatedJs: boolean;
   hasHiddenFiles: boolean;
   suspiciousExtensions: string[];
+  suspiciousFileNames: string[];
+  suspiciousTextFindings: string[];
+  inspectedTextFiles: number;
   totalSizeKb: number;
   inspectionNote?: string;
 };
 const REPORT_LIMITATIONS = [
-  "Static audit mode. Package code execution is intentionally disabled for operator safety.",
-  "File-structure inspection only. Tarball content is never executed.",
-  "Direct dependency coverage. Transitive dependency walk is reserved for Deep Scan.",
-  "Public registry intelligence only. Private registries and internal mirrors are out of scope.",
-  "Historical incidents are sourced from documented public advisories and incident records.",
-  "AI reasoning is constrained to supplied evidence and cross-checked against deterministic signals."
+  "Audit boundary: static pre-install investigation only.",
+  "Safe scope: package code is never executed in KiteBond analysis.",
+  "Coverage: registry metadata, lifecycle scripts, dependency surface, and tarball structure/text checks.",
+  "Dependency depth: direct dependencies are analyzed in Instant Scan.",
+  "Evidence sources: public npm registry signals and documented incident intelligence.",
+  "AI reasoning is constrained to supplied evidence and cross-validated with deterministic rules."
 ];
 
 function stageError(stage: ScanStage, error: string, status = 500) {
@@ -167,14 +170,18 @@ export async function POST(req: NextRequest) {
   );
   const tarballSection = tarballInfo
     ? [
-        "Tarball inspection (file names/sizes only):",
+        "Tarball inspection (static only):",
         `- File count: ${tarballInfo.fileCount}`,
+        `- Text files inspected: ${tarballInfo.inspectedTextFiles}`,
         `- Has binary files: ${tarballInfo.hasBinaryFiles}`,
         `- Has hidden files: ${tarballInfo.hasHiddenFiles}`,
+        `- Suspicious file names: ${tarballInfo.suspiciousFileNames.join(", ") || "none"}`,
+        `- Suspicious text findings: ${tarballInfo.suspiciousTextFindings.join(" | ") || "none"}`,
         `- Suspicious script files at root: ${tarballInfo.suspiciousExtensions.join(", ") || "none"}`,
-        `- Total size: ${tarballInfo.totalSizeKb}KB`
+        `- Total size: ${tarballInfo.totalSizeKb}KB`,
+        tarballInfo.inspectionNote ? `- Note: ${tarballInfo.inspectionNote}` : ""
       ].join("\n")
-    : "Tarball inspection unavailable (size limit or fetch failure).";
+    : "Tarball inspection unavailable (network/size boundary).";
 
   let heuristReport;
   try {
@@ -329,7 +336,7 @@ function scoreToSeverity(score: number): Severity {
 }
 
 function recommendationForFlag(code: string) {
-  if (code === "KNOWN_INCIDENT") return "Review the documented incident, pin to safe versions, and consider migration.";
+  if (code.startsWith("KNOWN_INCIDENT")) return "Review the documented incident record, pin safe versions, and verify lockfile integrity.";
   if (code === "TYPOSQUAT_RISK") return "Verify package identity before install and compare against the known package.";
   if (code === "MALICIOUS_INSTALL_SCRIPT") return "Do not install until the lifecycle script is manually reviewed and verified benign.";
   if (code === "HAS_INSTALL_SCRIPT") return "Review lifecycle scripts manually before installing this package in sensitive environments.";

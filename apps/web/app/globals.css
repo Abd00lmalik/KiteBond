@@ -725,6 +725,8 @@ pre,
   min-height: 460px;
   display: flex;
   flex-direction: column;
+  position: relative;
+  isolation: isolate;
   background: linear-gradient(
       160deg,
       rgba(255, 255, 255, 0.04) 0%,
@@ -737,15 +739,32 @@ pre,
   transform-style: preserve-3d;
 }
 
+.scan-card-premium::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(120% 100% at 50% -10%, rgba(255, 255, 255, 0.15), transparent 60%);
+}
+
 .scan-card-premium-live {
   border-color: rgba(0, 255, 100, 0.28);
   box-shadow: 0 24px 68px rgba(0, 0, 0, 0.45), 0 0 38px rgba(0, 255, 100, 0.13);
-  transition: transform 220ms ease, box-shadow 240ms ease, border-color 200ms ease;
+  transition: transform 220ms ease, box-shadow 240ms ease, border-color 200ms ease, background 220ms ease;
 }
 
 .scan-card-premium-live:hover {
   transform: translateY(-4px) scale(1.01);
   border-color: rgba(0, 255, 100, 0.5);
+  background: linear-gradient(
+      160deg,
+      rgba(0, 255, 100, 0.09) 0%,
+      rgba(255, 255, 255, 0.02) 45%,
+      rgba(0, 0, 0, 0.15) 100%
+    ),
+    rgba(12, 12, 26, 0.92);
   box-shadow: 0 36px 96px rgba(0, 0, 0, 0.5), 0 0 54px rgba(0, 255, 100, 0.2);
 }
 

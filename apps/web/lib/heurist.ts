@@ -59,6 +59,9 @@ interface MeshIntel {
   latencyMs: number;
 }
 
+const MESH_CACHE_TTL_MS = 5 * 60_000;
+const meshCache = new Map<string, { expiresAt: number; value: MeshIntel }>();
+
 interface ParsedHeuristResponse {
   severity?: ReportSeverity;
   summary?: string;
@@ -207,6 +210,9 @@ function flattenObjectText(value: unknown, acc: string[], depth = 0): void {
 
 async function maybeFetchMeshIntel(packageName: string, input: AnalysisInput, apiKey: string): Promise<MeshIntel | null> {
   if (!shouldRunMeshResearch(input)) return null;
+  const cacheKey = `${packageName.toLowerCase()}@${input.version}`;
+  const cached = meshCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
   const started = Date.now();
   const query = [
@@ -224,29 +230,36 @@ async function maybeFetchMeshIntel(packageName: string, input: AnalysisInput, ap
   ].filter(Boolean);
   if (meshUrls.length === 0) return null;
 
+  const evidenceLines: string[] = [];
+  const sources: string[] = [];
   for (const url of meshUrls) {
     try {
       const result = url.includes("/mcp/agents/")
         ? await callMeshMcpAgent(url, apiKey, query)
         : await callLegacyMeshEndpoint(url, apiKey, query);
       if (!result) continue;
-      const evidenceLines = Array.from(new Set(result))
+      const lines = Array.from(new Set(result))
         .map((line) => line.replace(/\s+/g, " ").trim())
         .filter((line) => line.length > 20)
-        .slice(0, 6);
-      if (evidenceLines.length === 0) continue;
-      return {
-        source: url,
-        evidenceLines,
-        latencyMs: Date.now() - started
-      };
+        .slice(0, 4);
+      if (lines.length === 0) continue;
+      evidenceLines.push(...lines);
+      sources.push(url);
+      if (evidenceLines.length >= 8) break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[Heurist Mesh] optional call failed (${url}): ${message}`);
     }
   }
 
-  return null;
+  if (evidenceLines.length === 0) return null;
+  const value: MeshIntel = {
+    source: sources.join(", "),
+    evidenceLines: Array.from(new Set(evidenceLines)).slice(0, 8),
+    latencyMs: Date.now() - started
+  };
+  meshCache.set(cacheKey, { value, expiresAt: Date.now() + MESH_CACHE_TTL_MS });
+  return value;
 }
 
 type MeshRpcResponse = { result?: Record<string, unknown>; error?: { message?: string; code?: number } };
@@ -533,11 +546,12 @@ export async function analyzePackageWithHeurist(
       return buildFallback(packageName, input, false);
     }
 
-    const normalizedScore = Math.max(0, Math.min(100, Math.round(parsed.riskScore ?? input.signalScore)));
-    const normalizedSeverity = parsed.severity && ["critical", "high", "medium", "low", "clean"].includes(parsed.severity)
-      ? parsed.severity
-      : scoreToReportSeverity(normalizedScore);
     const { findings, unsupportedClaims } = normalizeFindings(parsed, input, meshIntel?.evidenceLines ?? []);
+    const normalizedScore = Math.max(0, Math.min(100, Math.round(parsed.riskScore ?? input.signalScore)));
+    const calibratedScore = Math.max(0, Math.min(100, normalizedScore - unsupportedClaims * 4));
+    const normalizedSeverity = parsed.severity && ["critical", "high", "medium", "low", "clean"].includes(parsed.severity)
+      ? scoreToReportSeverity(calibratedScore)
+      : scoreToReportSeverity(calibratedScore);
     const summary = typeof parsed.summary === "string" && parsed.summary.trim().length >= 30
       ? parsed.summary.trim()
       : `Heurist assessment generated from ${input.signalFlags.length} deterministic evidence signals.`;
@@ -560,7 +574,7 @@ export async function analyzePackageWithHeurist(
       summary,
       findings,
       details,
-      riskScore: normalizedScore,
+      riskScore: calibratedScore,
       flags,
       recommendation,
       heuristCalled: true,
