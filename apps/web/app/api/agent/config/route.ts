@@ -7,13 +7,20 @@ import {
   PROTOCOL_TREASURY,
   SCAN_PAYMENTS_ADDRESS
 } from "@/lib/contract";
-import { CONTRACT_CONFIG } from "@/lib/contractConfig";
+import { CONTRACT_CONFIG, getMissingContractConfig } from "@/lib/contractConfig";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const missing = getMissingContractConfig();
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: "Server configuration incomplete", missingKeys: missing, code: "AGENT_CONFIG_MISSING" },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({
       network: {
         chainId: 2368,
