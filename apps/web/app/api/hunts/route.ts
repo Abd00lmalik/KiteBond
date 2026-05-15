@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
+import { coerceOnChainId, decodeHuntCreatedFromTx } from "@/lib/huntSync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,51 +55,95 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const onChainId = Number(body.onChainId ?? body.chainHuntId);
-    if (!Number.isFinite(onChainId)) {
-      return NextResponse.json({ error: "Missing onChainId", code: "HUNT_INPUT_REQUIRED" }, { status: 400 });
+    const txHash = body.createdTx!.trim();
+    const requestedOnChainId = coerceOnChainId(body.onChainId ?? body.chainHuntId);
+    let resolvedOnChainId = requestedOnChainId;
+    let creatorAddress = body.creatorAddress!;
+    let rewardAmount = body.rewardAmount!;
+    let stakeRequired = body.stakeRequired!;
+    let deadline = body.deadline!;
+    const decodeLog: string[] = [];
+
+    try {
+      const decoded = await decodeHuntCreatedFromTx(txHash);
+      decodeLog.push(...decoded.decodeLog);
+      if (decoded.onChainId !== null) resolvedOnChainId = decoded.onChainId;
+      if (decoded.creatorAddress) creatorAddress = decoded.creatorAddress;
+      if ((!rewardAmount || rewardAmount === "0") && decoded.rewardAmount) rewardAmount = decoded.rewardAmount;
+      if ((!stakeRequired || stakeRequired === "0") && decoded.stakeRequired) stakeRequired = decoded.stakeRequired;
+      if (!body.deadline && decoded.deadlineIso) deadline = decoded.deadlineIso;
+    } catch (error) {
+      decodeLog.push(error instanceof Error ? error.message : String(error));
     }
 
     let hunt;
     try {
-      hunt = await prisma.hunt.upsert({
-        where: { onChainId },
-        update: {
-          chainId: 2368,
-          chainHuntId: onChainId,
-          creatorAddress: body.creatorAddress!,
-          packageName: body.packageName!,
-          version: body.version!,
-          scanDepth: body.scanDepth || "instant",
-          rewardAmount: body.rewardAmount!,
-          stakeRequired: body.stakeRequired!,
-          stakeAmount: body.stakeRequired!,
-          deadline: new Date(body.deadline!),
-          termsHash: body.termsHash,
-          metadataHash: body.metadataHash,
-          createdTx: body.createdTx,
-          txHash: body.createdTx,
-          status: "Open"
-        },
-        create: {
-          chainId: 2368,
-          chainHuntId: onChainId,
-          onChainId,
-          creatorAddress: body.creatorAddress!,
-          packageName: body.packageName!,
-          version: body.version!,
-          scanDepth: body.scanDepth || "instant",
-          rewardAmount: body.rewardAmount!,
-          stakeRequired: body.stakeRequired!,
-          stakeAmount: body.stakeRequired!,
-          deadline: new Date(body.deadline!),
-          termsHash: body.termsHash,
-          metadataHash: body.metadataHash,
-          createdTx: body.createdTx,
-          txHash: body.createdTx,
-          status: "Open"
+      if (resolvedOnChainId !== null) {
+        hunt = await prisma.hunt.upsert({
+          where: { onChainId: resolvedOnChainId },
+          update: {
+            chainId: 2368,
+            chainHuntId: resolvedOnChainId,
+            creatorAddress,
+            packageName: body.packageName!,
+            version: body.version!,
+            scanDepth: body.scanDepth || "instant",
+            rewardAmount,
+            stakeRequired,
+            stakeAmount: stakeRequired,
+            deadline: new Date(deadline),
+            termsHash: body.termsHash,
+            metadataHash: body.metadataHash,
+            createdTx: txHash,
+            txHash,
+            status: "Open"
+          },
+          create: {
+            chainId: 2368,
+            chainHuntId: resolvedOnChainId,
+            onChainId: resolvedOnChainId,
+            creatorAddress,
+            packageName: body.packageName!,
+            version: body.version!,
+            scanDepth: body.scanDepth || "instant",
+            rewardAmount,
+            stakeRequired,
+            stakeAmount: stakeRequired,
+            deadline: new Date(deadline),
+            termsHash: body.termsHash,
+            metadataHash: body.metadataHash,
+            createdTx: txHash,
+            txHash,
+            status: "Open"
+          }
+        });
+      } else {
+        const existingByTx = await prisma.hunt.findUnique({ where: { txHash } });
+        if (existingByTx) {
+          hunt = existingByTx;
+        } else {
+          hunt = await prisma.hunt.create({
+            data: {
+              chainId: 2368,
+              chainHuntId: null,
+              onChainId: null,
+              creatorAddress,
+              packageName: body.packageName!,
+              version: body.version!,
+              scanDepth: body.scanDepth || "instant",
+              rewardAmount,
+              stakeRequired,
+              stakeAmount: stakeRequired,
+              deadline: new Date(deadline),
+              termsHash: body.termsHash,
+              metadataHash: body.metadataHash,
+              createdTx: txHash,
+              txHash,
+              status: "Open"
+            }
+          });
         }
-      });
+      }
     } catch (error) {
       const dbError = error instanceof Error ? error.message : "Unknown DB error";
       console.error("[Hunt] DB save failed after on-chain success:", dbError);
@@ -107,8 +152,9 @@ export async function POST(req: NextRequest) {
         onChainSuccess: true,
         dbSaved: false,
         dbError,
-        txHash: body.createdTx,
-        onChainId: String(onChainId),
+        txHash,
+        onChainId: resolvedOnChainId !== null ? String(resolvedOnChainId) : null,
+        decodeLog,
         message: "Hunt confirmed on-chain. Indexing failed - use Sync Hunt to retry."
       });
     }
@@ -127,8 +173,9 @@ export async function POST(req: NextRequest) {
       success: true,
       onChainSuccess: true,
       dbSaved: true,
-      txHash: body.createdTx,
-      onChainId: String(onChainId),
+      txHash,
+      onChainId: resolvedOnChainId !== null ? String(resolvedOnChainId) : null,
+      decodeLog,
       message: "Hunt created and indexed successfully.",
       data: hunt
     });

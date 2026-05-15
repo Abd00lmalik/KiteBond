@@ -176,9 +176,8 @@ export function useCreateHunt() {
       const event = events[0] as { args?: { huntId?: bigint } } | undefined;
       const huntId = event?.args?.huntId;
       if (huntId === undefined) {
-        console.warn("[Hunt] HuntCreated event not found in transaction receipt. Using tx hash fallback for indexing.");
-        const syntheticId = parseInt(hash.slice(2, 10), 16) * -1;
-        return { hash, chainHuntId: syntheticId < 0 ? syntheticId : -1 };
+        console.warn("[Hunt] HuntCreated event not found in transaction receipt. Backend sync will resolve onChainId from tx hash.");
+        return { hash, chainHuntId: null };
       }
       return { hash, chainHuntId: Number(huntId) };
     },

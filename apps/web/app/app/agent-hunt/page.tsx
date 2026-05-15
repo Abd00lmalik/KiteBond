@@ -83,7 +83,7 @@ export default function AgentHuntPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingSync, setPendingSync] = useState<{
     txHash: string;
-    onChainId: string;
+    onChainId?: string;
     creatorAddress: string;
     packageName: string;
     version: string;
@@ -216,7 +216,7 @@ export default function AgentHuntPage() {
         deadlineSeconds
       });
       createdTxHash = hash;
-      createdOnChainId = String(chainHuntId);
+      createdOnChainId = chainHuntId !== null ? String(chainHuntId) : null;
       createdResolvedVersion = resolvedVersion;
       createdDeadlineIso = deadline.toISOString();
 
@@ -225,7 +225,7 @@ export default function AgentHuntPage() {
       createdMetadataHash = metadataHash;
       const syncPayload = {
         txHash: hash,
-        onChainId: String(chainHuntId),
+        onChainId: chainHuntId !== null ? String(chainHuntId) : undefined,
         creatorAddress: address,
         packageName: packageName.trim(),
         version: resolvedVersion,
@@ -249,7 +249,7 @@ export default function AgentHuntPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chainHuntId,
-          onChainId: chainHuntId,
+          onChainId: chainHuntId ?? undefined,
           creatorAddress: address,
           packageName: packageName.trim(),
           version: resolvedVersion,
@@ -277,10 +277,10 @@ export default function AgentHuntPage() {
       router.push(`/app/hunts/${json.data.id}`);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt creation failed.";
-      if (!pendingSync && createdTxHash && createdOnChainId && createdResolvedVersion && createdDeadlineIso && createdTermsHash && createdMetadataHash) {
+      if (!pendingSync && createdTxHash && createdResolvedVersion && createdDeadlineIso && createdTermsHash && createdMetadataHash) {
         setPendingSync({
           txHash: createdTxHash,
-          onChainId: createdOnChainId,
+          onChainId: createdOnChainId ?? undefined,
           creatorAddress: address,
           packageName: packageName.trim(),
           version: createdResolvedVersion,

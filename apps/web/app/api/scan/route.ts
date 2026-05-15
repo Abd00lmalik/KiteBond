@@ -8,6 +8,7 @@ import { toJsonValue } from "@/lib/json";
 import { fetchNpmMeta } from "@/lib/npm";
 import { verifyKitePaymentTx } from "@/lib/paymentVerification";
 import { extractSignals } from "@/lib/signals";
+import { matchKnownIncidents } from "@/lib/knownIncidents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -182,6 +183,27 @@ export async function POST(req: NextRequest) {
         tarballInfo.inspectionNote ? `- Note: ${tarballInfo.inspectionNote}` : ""
       ].join("\n")
     : "Tarball inspection unavailable (network/size boundary).";
+  const tarballEvidence = tarballInfo
+    ? [
+        `file_count:${tarballInfo.fileCount}`,
+        `inspected_text_files:${tarballInfo.inspectedTextFiles}`,
+        `has_binary_files:${tarballInfo.hasBinaryFiles}`,
+        `has_hidden_files:${tarballInfo.hasHiddenFiles}`,
+        `has_obfuscated_js:${tarballInfo.hasObfuscatedJs}`,
+        `suspicious_extensions:${tarballInfo.suspiciousExtensions.join(",") || "none"}`,
+        `suspicious_file_names:${tarballInfo.suspiciousFileNames.join(",") || "none"}`,
+        `suspicious_text_findings:${tarballInfo.suspiciousTextFindings.join(" | ") || "none"}`,
+        `total_size_kb:${tarballInfo.totalSizeKb}`,
+        tarballInfo.inspectionNote ? `note:${tarballInfo.inspectionNote}` : ""
+      ].filter(Boolean)
+    : ["tarball_inventory:unavailable"];
+  const incidentContext = matchKnownIncidents(meta.name, meta.version).map((entry) => {
+    const affected = entry.status === "active" ? "active_version_match" : "historical_context";
+    const versionSpec = entry.incident.affectedVersions.range
+      ? `range ${entry.incident.affectedVersions.range}`
+      : `versions ${(entry.incident.affectedVersions.versions ?? []).join(", ")}`;
+    return `${entry.incident.incidentType} (${affected}) - ${versionSpec}. Source: ${entry.incident.source}`;
+  });
 
   let heuristReport;
   try {
@@ -189,16 +211,27 @@ export async function POST(req: NextRequest) {
       version: meta.version,
       description: meta.description,
       author: meta.author,
+      repository: meta.repository,
+      homepage: meta.homepage,
+      keywords: meta.keywords,
       weeklyDownloads: meta.weeklyDownloads,
+      firstPublishedAt: meta.firstPublishedAt,
       publishedAt: meta.publishedAt,
+      totalVersions: meta.totalVersions,
       maintainerCount: meta.maintainerCount,
+      maintainers: meta.maintainers.map((maintainer) => maintainer.name),
       hasTypes: meta.hasTypes,
       licenseType: meta.license,
       hasInstallScript: meta.hasInstallScript,
+      scripts: meta.scripts,
       dependencyCount: meta.dependencyCount,
+      dependencyNames: meta.dependencyNames,
       signalFlags: [...signals.flags.map((flag) => flag.message), tarballSection],
       signalScore: signals.riskScore,
-      evidenceBreakdown
+      evidenceBreakdown,
+      knownIncidentContext: incidentContext,
+      tarballEvidence,
+      auditScope: REPORT_LIMITATIONS
     });
   } catch (err) {
     return NextResponse.json(

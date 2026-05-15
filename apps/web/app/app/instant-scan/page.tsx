@@ -42,14 +42,6 @@ const riskColors: Record<Severity, { bg: string; border: string; text: string }>
   critical: { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.25)", text: "#ef4444" }
 };
 
-const GRADE_STYLES: Record<string, { color: string; label: string }> = {
-  confirmed: { color: "#ff2d55", label: "CONFIRMED" },
-  suspicious: { color: "#ff9f0a", label: "SUSPICIOUS" },
-  heuristic: { color: "#ffd60a", label: "HEURISTIC" },
-  missing_data: { color: "#8fbc8f", label: "MISSING DATA" },
-  historical: { color: "#9b5de5", label: "HISTORICAL" }
-};
-
 export default function InstantScanPage() {
   const { address, isConnected } = useAccount();
   const { isCorrectNetwork, switchToKite, isSwitching } = useNetworkGuard();
@@ -84,6 +76,27 @@ export default function InstantScanPage() {
         reportHash: context.reportHash,
         scanId: context.scanId,
         onchainScanId: context.onchainScanId
+      }
+    : null;
+
+  const severityWeight: Record<Severity, number> = {
+    critical: 5,
+    high: 4,
+    medium: 3,
+    low: 2,
+    clean: 1
+  };
+  const topReasons = result?.report
+    ? [...result.report.signals]
+        .sort((a, b) => severityWeight[b.severity] - severityWeight[a.severity])
+        .slice(0, 5)
+    : [];
+  const groupedSignals = result?.report
+    ? {
+        incidents: result.report.signals.filter((signal) => /KNOWN_INCIDENT/i.test(signal.evidence)),
+        metadata: result.report.signals.filter((signal) => signal.type === "metadata_signal" || signal.type === "maintainer_signal" || signal.type === "repository_signal"),
+        scripts: result.report.signals.filter((signal) => signal.type === "install_script"),
+        dependencyAndFiles: result.report.signals.filter((signal) => signal.type === "dependency_risk" || signal.type === "tarball_signal" || signal.type === "typosquat")
       }
     : null;
 
@@ -319,7 +332,7 @@ export default function InstantScanPage() {
                     className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)]"
                   >
                     <ShieldCheck className="h-4 w-4" />
-                    Run Instant Scan
+                    Start Scan
                   </button>
                 </Card>
               </motion.div>
@@ -486,90 +499,62 @@ export default function InstantScanPage() {
                 </div>
                 <Badge tone={result.report.riskLevel} label={result.report.riskLevel} />
               </div>
-              <div className="mt-3">
-                {result.report.heuristCalled ? (
-                  <span className="font-mono text-xs text-[var(--cyber-green)]">AI: Heurist Llama-3.3-70B</span>
-                ) : (
-                  <span className="font-mono text-xs text-[var(--text-dim)]">Signal analysis only</span>
-                )}
-              </div>
-
-              <div className="mt-6 grid gap-5 md:grid-cols-[160px_1fr]">
+              <div className="mt-6 grid gap-5 md:grid-cols-[170px_1fr]">
                 <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] p-5 text-center">
                   <p className="label-sm">Risk Score</p>
                   <p className="mt-3 text-5xl font-bold text-[var(--text-primary)]">
                     <CountUp end={result.report.riskScore} duration={1} />
                   </p>
                 </div>
-                <div>
-                  <p>{result.report.summary}</p>
+                <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-5">
+                  <p className="text-sm text-[var(--text-primary)]">
+                    {buildVerdictLine(result.report.riskLevel, result.report.packageName, result.report.version)}
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--text-secondary)]">{result.report.summary}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge tone="verified" label={result.report.finalRecommendation.replace(/_/g, " ")} />
+                    <Badge tone="verified" label={formatRecommendation(result.report.finalRecommendation)} />
                     <Badge tone="pending" label={`confidence ${Math.round(result.report.confidence * 100)}%`} />
                   </div>
                 </div>
               </div>
 
-              {result.report.findings && result.report.findings.length > 0 && (
-                <div className="mt-6 grid gap-3">
-                  <p className="label-sm text-[var(--green)]">Investigation Findings</p>
-                  {result.report.findings.map((finding, index) => (
-                    <Card key={`${finding.claim}-${index}`} variant="glass" className="p-4">
+              <div className="mt-6">
+                <p className="label-sm text-[var(--green)]">Why this score</p>
+                <div className="mt-3 grid gap-3">
+                  {topReasons.map((reason, index) => (
+                    <Card key={`${reason.type}-${index}`} variant="glass" className="p-4">
                       <div className="mb-2 flex items-center gap-2">
-                        <span
-                          className="rounded-[4px] border px-2 py-[2px] text-[0.62rem] font-semibold tracking-[0.08em]"
-                          style={{
-                            color: GRADE_STYLES[finding.evidenceGrade]?.color ?? "var(--text-muted)",
-                            borderColor: GRADE_STYLES[finding.evidenceGrade]?.color ?? "var(--border-dim)"
-                          }}
-                        >
-                          {GRADE_STYLES[finding.evidenceGrade]?.label ?? finding.evidenceGrade.toUpperCase()}
-                        </span>
-                        <span className="font-mono text-[0.68rem] text-[var(--text-muted)]">
-                          confidence {Math.round(finding.confidence * 100)}%
-                        </span>
+                        <Badge tone={reason.severity} label={reason.severity} />
                       </div>
-                      <p className="text-sm text-[var(--text-primary)]">{finding.claim}</p>
-                      <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidenceSource}</p>
+                      <p className="text-sm text-[var(--text-primary)]">{reason.evidence}</p>
+                      <p className="mt-2 text-xs text-[var(--text-secondary)]">{reason.recommendation}</p>
                     </Card>
                   ))}
                 </div>
-              )}
+              </div>
 
               <div className="mt-6 grid gap-4">
-                {result.report.signals.length === 0 && (
-                  <Card variant="glass" className="p-4">
-                    <p className="text-sm text-[var(--text-secondary)]">No deterministic or AI risk signals were reported.</p>
-                  </Card>
-                )}
-                {result.report.signals.map((signal, index) => (
-                  <Card
-                    key={`${signal.type}-${index}`}
-                    className="p-4"
-                    style={{
-                      borderColor: riskColors[signal.severity].border,
-                      background: riskColors[signal.severity].bg
-                    }}
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <Badge tone={signal.severity} label={signal.severity} />
-                      <span className="text-xs text-[var(--text-muted)]">{signal.type}</span>
-                      {signal.evidenceGrade && (
-                        <span
-                          className="rounded-[4px] border px-2 py-[2px] text-[0.62rem] font-semibold tracking-[0.08em]"
-                          style={{
-                            color: GRADE_STYLES[signal.evidenceGrade]?.color ?? "var(--text-muted)",
-                            borderColor: GRADE_STYLES[signal.evidenceGrade]?.color ?? "var(--border-dim)"
-                          }}
-                        >
-                          {GRADE_STYLES[signal.evidenceGrade]?.label ?? signal.evidenceGrade.toUpperCase()}
-                        </span>
-                      )}
+                <EvidenceGroup title="Known Incidents" items={groupedSignals?.incidents ?? []} />
+                <EvidenceGroup title="Metadata & Maintainer Signals" items={groupedSignals?.metadata ?? []} />
+                <EvidenceGroup title="Lifecycle Script Findings" items={groupedSignals?.scripts ?? []} />
+                <EvidenceGroup title="Dependency & File Signals" items={groupedSignals?.dependencyAndFiles ?? []} />
+                <div>
+                  <p className="label-sm text-[var(--green)]">Heurist Investigation Summary</p>
+                  {result.report.findings && result.report.findings.length > 0 ? (
+                    <div className="mt-3 grid gap-3">
+                      {result.report.findings.slice(0, 5).map((finding, index) => (
+                        <Card key={`${finding.claim}-${index}`} variant="glass" className="p-4">
+                          <p className="text-sm text-[var(--text-primary)]">{finding.claim}</p>
+                          <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidenceSource}</p>
+                        </Card>
+                      ))}
                     </div>
-                    <p className="text-sm">{signal.evidence}</p>
-                    <p className="mt-2 text-xs text-[var(--text-secondary)]">-&gt; {signal.recommendation}</p>
-                  </Card>
-                ))}
+                  ) : (
+                    <Card variant="glass" className="mt-3 p-4">
+                      <p className="text-sm text-[var(--text-secondary)]">No additional investigative claims were promoted beyond deterministic evidence.</p>
+                    </Card>
+                  )}
+                </div>
               </div>
 
               <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
@@ -581,6 +566,25 @@ export default function InstantScanPage() {
                     <li key={`${idx}-${item}`}>{item}</li>
                   ))}
                 </ul>
+              </details>
+
+              <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[rgba(255,255,255,0.02)] p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
+                  Technical Details
+                </summary>
+                <div className="mt-3 space-y-3 text-xs text-[var(--text-secondary)]">
+                  <p>AI model: Heurist Llama-3.3-70B (gateway)</p>
+                  <p>Heurist called: {result.report.heuristCalled ? "yes" : "no"}</p>
+                  <p>Methodology: {result.report.methodology}</p>
+                  {result.report.signals.map((signal, index) => (
+                    <div key={`${signal.type}-raw-${index}`} className="rounded-[var(--radius-sm)] border border-[var(--border-dim)] p-2">
+                      <p className="font-mono text-[0.68rem] text-[var(--text-muted)]">
+                        {signal.type} · {signal.evidenceGrade ?? "n/a"} · {signal.severity}
+                      </p>
+                      <p className="mt-1">{signal.evidence}</p>
+                    </div>
+                  ))}
+                </div>
               </details>
 
               <Card variant="glass" className="mt-6 p-5">
@@ -634,6 +638,64 @@ export default function InstantScanPage() {
       </AnimatePresence>
     </AppShell>
   );
+}
+
+function EvidenceGroup({
+  title,
+  items
+}: {
+  title: string;
+  items: ScanReport["signals"];
+}) {
+  return (
+    <div>
+      <p className="label-sm text-[var(--green)]">{title}</p>
+      {items.length === 0 ? (
+        <Card variant="glass" className="mt-3 p-4">
+          <p className="text-sm text-[var(--text-secondary)]">No material findings were promoted in this section.</p>
+        </Card>
+      ) : (
+        <div className="mt-3 grid gap-3">
+          {items.map((signal, index) => (
+            <Card
+              key={`${title}-${signal.type}-${index}`}
+              className="p-4"
+              style={{
+                borderColor: riskColors[signal.severity].border,
+                background: riskColors[signal.severity].bg
+              }}
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <Badge tone={signal.severity} label={signal.severity} />
+              </div>
+              <p className="text-sm text-[var(--text-primary)]">{signal.evidence}</p>
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">{signal.recommendation}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function buildVerdictLine(level: Severity, packageName: string, version: string) {
+  if (level === "critical") {
+    return `${packageName}@${version} shows critical pre-install risk indicators. Do not install until manual review is complete.`;
+  }
+  if (level === "high") {
+    return `${packageName}@${version} shows high-risk evidence that requires immediate manual verification before use.`;
+  }
+  if (level === "medium") {
+    return `${packageName}@${version} has meaningful risk signals. Use with caution and verify provenance before production use.`;
+  }
+  if (level === "low") {
+    return `${packageName}@${version} has low-severity risk signals. Continue with normal dependency hygiene and lockfile pinning.`;
+  }
+  return `${packageName}@${version} shows no significant risk evidence in this static pre-install audit.`;
+}
+
+function formatRecommendation(value: ScanReport["finalRecommendation"]) {
+  return value.replace(/_/g, " ");
 }
 
 function getFailedStep(err: unknown): CompactStepKey {

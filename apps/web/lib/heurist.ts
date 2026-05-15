@@ -36,13 +36,24 @@ interface AnalysisInput {
   author: string;
   weeklyDownloads: number;
   publishedAt: string;
+  firstPublishedAt?: string;
+  totalVersions?: number;
   maintainerCount: number;
+  maintainers?: string[];
   hasTypes: boolean;
   licenseType: string;
+  repository?: string | null;
+  homepage?: string | null;
+  keywords?: string[];
   hasInstallScript: boolean;
+  scripts?: Record<string, string>;
   dependencyCount: number;
+  dependencyNames?: string[];
   signalFlags: string[];
   signalScore: number;
+  knownIncidentContext?: string[];
+  tarballEvidence?: string[];
+  auditScope?: string[];
   evidenceBreakdown?: {
     confirmed: number;
     suspicious: number;
@@ -91,10 +102,20 @@ function buildEvidenceCorpus(input: AnalysisInput, meshEvidence: string[]): stri
   const rows = [
     ...input.signalFlags,
     ...meshEvidence,
+    ...(input.knownIncidentContext ?? []),
+    ...(input.tarballEvidence ?? []),
+    ...(input.auditScope ?? []),
+    ...(input.dependencyNames ?? []).map((name) => `dependency:${name}`),
+    ...(input.maintainers ?? []).map((maintainer) => `maintainer:${maintainer}`),
+    ...Object.entries(input.scripts ?? {}).map(([name, script]) => `script:${name}:${script}`),
     `description:${input.description}`,
     `author:${input.author}`,
+    `repository:${input.repository ?? "none"}`,
+    `homepage:${input.homepage ?? "none"}`,
     `weekly_downloads:${input.weeklyDownloads}`,
+    `first_published_at:${input.firstPublishedAt ?? "unknown"}`,
     `published_at:${input.publishedAt}`,
+    `total_versions:${input.totalVersions ?? 0}`,
     `maintainers:${input.maintainerCount}`,
     `license:${input.licenseType}`,
     `has_install_script:${input.hasInstallScript}`,
@@ -148,6 +169,7 @@ function normalizeFindings(
 
       const supported = claimIsSupported(claim, evidenceSource, corpus);
       if (!supported) unsupportedClaims += 1;
+      if (!supported) return null;
 
       const normalizedConfidence = typeof entry.confidence === "number" ? Math.max(0, Math.min(1, entry.confidence)) : 0.6;
       const normalizedGrade: EvidenceGrade =
@@ -164,8 +186,8 @@ function normalizeFindings(
       return {
         claim,
         evidenceSource,
-        confidence: supported ? normalizedConfidence : Math.min(normalizedConfidence, 0.55),
-        evidenceGrade: supported ? normalizedGrade : "heuristic"
+        confidence: normalizedConfidence,
+        evidenceGrade: normalizedGrade
       };
     })
     .filter((entry): entry is HeuristFinding => Boolean(entry))
@@ -444,9 +466,11 @@ export async function analyzePackageWithHeurist(
   }
 
   const systemPrompt = [
-    "You are a strict npm supply-chain security analyst for KiteBond.",
-    "You receive deterministic evidence from KiteBond and optional web-research snippets from Heurist Mesh.",
-    "Only reason from supplied evidence. Never infer risk from package name reputation alone.",
+    "You are a forensic npm supply-chain security analyst for KiteBond.",
+    "You receive a structured evidence dossier from KiteBond and optional web-research snippets from Heurist Mesh.",
+    "Reason only from supplied evidence and well-documented public records explicitly present in the dossier.",
+    "Never infer risk from package name reputation alone.",
+    "Do not claim malicious behavior unless evidence supports it.",
     "Return JSON only; no markdown, no prose outside JSON.",
     "Schema:",
     "{",
@@ -464,10 +488,11 @@ export async function analyzePackageWithHeurist(
     '  "recommendation": "use"|"caution"|"investigate"|"avoid"',
     "}",
     "Calibration rules:",
-    "- critical/high require concrete evidence (confirmed malicious lifecycle behavior, proven compromise, strong incident evidence).",
-    "- single maintainer or moderate download counts alone cannot justify high/critical.",
-    "- if evidence is incomplete, explicitly downgrade confidence and evidenceGrade.",
-    "- keep findings forensic, concrete, and traceable to supplied evidence lines."
+    "- classify findings as confirmed, suspicious, heuristic, historical, or missing_data.",
+    "- critical/high require concrete evidence (confirmed malicious lifecycle behavior, active compromise, or direct incident-version match).",
+    "- single maintainer, low popularity, or missing repository alone cannot justify critical.",
+    "- if evidence is incomplete, downgrade confidence and evidenceGrade.",
+    "- every finding must be traceable to supplied evidence lines."
   ].join("\n");
 
   const meshSection = meshIntel
@@ -481,13 +506,26 @@ export async function analyzePackageWithHeurist(
     `Package: ${packageName}@${input.version}`,
     `Description: ${input.description || "(none)"}`,
     `Author: ${input.author || "unknown"}`,
+    `Repository: ${input.repository || "none"}`,
+    `Homepage: ${input.homepage || "none"}`,
+    `Keywords: ${(input.keywords ?? []).join(", ") || "none"}`,
     `Weekly downloads: ${input.weeklyDownloads.toLocaleString()}`,
+    `First published: ${input.firstPublishedAt || "unknown"}`,
     `Published: ${input.publishedAt || "unknown"}`,
+    `Total versions: ${input.totalVersions ?? 0}`,
     `Maintainers: ${input.maintainerCount}`,
+    `Maintainer identities: ${(input.maintainers ?? []).join(", ") || "unknown"}`,
     `License: ${input.licenseType || "none"}`,
     `Has TypeScript types: ${input.hasTypes}`,
     `Has install/postinstall scripts: ${input.hasInstallScript}`,
     `Runtime dependency count: ${input.dependencyCount}`,
+    `Dependency sample: ${(input.dependencyNames ?? []).slice(0, 30).join(", ") || "none"}`,
+    "Lifecycle scripts (truncated):",
+    ...Object.entries(input.scripts ?? {}).slice(0, 8).map(([name, script]) => `- ${name}: ${script.slice(0, 180)}`),
+    "Known incident context:",
+    ...((input.knownIncidentContext ?? []).length > 0 ? input.knownIncidentContext! : ["- none"]),
+    "Tarball/file inventory evidence:",
+    ...((input.tarballEvidence ?? []).length > 0 ? input.tarballEvidence! : ["- unavailable"]),
     input.evidenceBreakdown
       ? `Evidence counts -> confirmed:${input.evidenceBreakdown.confirmed}, suspicious:${input.evidenceBreakdown.suspicious}, heuristic:${input.evidenceBreakdown.heuristic}, missing_data:${input.evidenceBreakdown.missing_data}, historical:${input.evidenceBreakdown.historical}`
       : "",
@@ -496,7 +534,9 @@ export async function analyzePackageWithHeurist(
     "Deterministic evidence lines:",
     ...input.signalFlags.map((flag) => `- ${flag}`),
     "",
-    meshSection
+    meshSection,
+    "",
+    "Instruction: assess risk only from this dossier. Separate confirmed evidence, strong suspicion, weak suspicion, and inconclusive points."
   ]
     .filter(Boolean)
     .join("\n");

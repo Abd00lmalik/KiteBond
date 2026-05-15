@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ethers } from "ethers";
 import { apiError } from "@/lib/apiError";
-import { HuntRegistryEthersABI } from "@/lib/contract";
 import { prisma } from "@/lib/db";
+import { coerceOnChainId, decodeHuntCreatedFromTx } from "@/lib/huntSync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,15 +22,20 @@ export async function POST(req: NextRequest) {
       metadataHash?: string;
     };
 
-    let onChainId = body.onChainId !== undefined ? Number(body.onChainId) : undefined;
-    if (onChainId !== undefined && !Number.isFinite(onChainId)) onChainId = undefined;
-    let creatorAddress = body.creatorAddress;
-    let rewardAmount = body.rewardAmount;
-    let stakeRequired = body.stakeRequired;
-    let deadline = body.deadline;
-    let parsedPackageName = body.packageName;
+    if (!body.txHash?.trim()) {
+      return NextResponse.json({ success: false, synced: false, hunt: null, error: "txHash is required for hunt sync." }, { status: 400 });
+    }
+    const txHash = body.txHash.trim();
 
-    console.log("[Hunt Sync] txHash:", body.txHash ?? "(none)");
+    let onChainId = coerceOnChainId(body.onChainId);
+    let creatorAddress = body.creatorAddress || "unknown";
+    let rewardAmount = body.rewardAmount || "0";
+    let stakeRequired = body.stakeRequired || "0";
+    let deadline = body.deadline;
+    let parsedPackageName = body.packageName || "";
+    const decodeLog: string[] = [];
+
+    console.log("[Hunt Sync] txHash:", txHash);
     console.log("[Hunt Sync] supplied onChainId:", onChainId);
 
     try {
@@ -46,70 +50,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (body.txHash) {
-      try {
-        const provider = new ethers.JsonRpcProvider("https://rpc-testnet.gokite.ai/");
-        const receipt = await provider.getTransactionReceipt(body.txHash);
-        console.log("[Hunt Sync] Receipt found:", !!receipt);
-        console.log("[Hunt Sync] Logs count:", receipt?.logs?.length ?? 0);
-        if (!receipt) {
-          return NextResponse.json({ success: false, synced: false, hunt: null, error: "Transaction not found or not yet confirmed." }, { status: 404 });
-        }
-
-        const interfaces = [
-          new ethers.Interface(HuntRegistryEthersABI),
-          ...[
-            "event HuntCreated(uint256 indexed huntId, address indexed creator, string packageName, uint256 stake)",
-            "event TaskCreated(uint256 indexed taskId, address indexed creator, string packageName, uint256 amount)",
-            "event BountyCreated(uint256 indexed id, address creator, uint256 amount)",
-            "event BountyCreaed(uint256 indexed id, address creator, uint256 amount)",
-            "event HuntPosted(uint256 indexed id, address indexed poster)"
-          ].map((sig) => new ethers.Interface([sig]))
-        ];
-
-        for (const iface of interfaces) {
-          for (const log of receipt.logs) {
-            try {
-              const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
-              if (parsed && ["HuntCreated", "TaskCreated", "BountyCreated", "BountyCreaed", "HuntPosted"].includes(parsed.name)) {
-                const parsedId = Number(parsed.args.huntId ?? parsed.args.taskId ?? parsed.args.id ?? parsed.args[0]);
-                if (Number.isFinite(parsedId)) onChainId = parsedId;
-                creatorAddress = creatorAddress || String(parsed.args.creator ?? parsed.args.owner ?? parsed.args.poster ?? receipt.from ?? "");
-                parsedPackageName = parsedPackageName || (parsed.args.packageName ? String(parsed.args.packageName) : undefined);
-                rewardAmount = rewardAmount || String(parsed.args.rewardAmount ?? parsed.args.amount ?? "");
-                stakeRequired = stakeRequired || String(parsed.args.stakeRequired ?? parsed.args.stake ?? parsed.args.amount ?? "");
-                const parsedDeadline = Number(parsed.args.deadline ?? 0n);
-                if (!deadline && Number.isFinite(parsedDeadline) && parsedDeadline > 0) {
-                  deadline = new Date(parsedDeadline * 1000).toISOString();
-                }
-                break;
-              }
-            } catch {
-              // Try the next event signature/log combination.
-            }
-          }
-          if (onChainId !== undefined && Number.isFinite(onChainId)) break;
-        }
-      } catch (error) {
-        console.warn(
-          "[Hunt Sync] Receipt parse failed, falling back to provided payload:",
-          error instanceof Error ? error.message : error
-        );
-      }
+    try {
+      const decoded = await decodeHuntCreatedFromTx(txHash);
+      decodeLog.push(...decoded.decodeLog);
+      console.log("[Hunt Sync] Receipt found:", true);
+      console.log("[Hunt Sync] Logs count:", decoded.rawLogCount);
+      if (decoded.onChainId !== null) onChainId = decoded.onChainId;
+      if (decoded.creatorAddress) creatorAddress = decoded.creatorAddress;
+      if ((!rewardAmount || rewardAmount === "0") && decoded.rewardAmount) rewardAmount = decoded.rewardAmount;
+      if ((!stakeRequired || stakeRequired === "0") && decoded.stakeRequired) stakeRequired = decoded.stakeRequired;
+      if (!body.deadline && decoded.deadlineIso) deadline = decoded.deadlineIso;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      decodeLog.push(message);
+      console.warn("[Hunt Sync] Receipt parse failed, falling back to provided payload:", message);
     }
 
     console.log("[Hunt Sync] onChainId parsed:", onChainId);
     console.log("[Hunt Sync] packageName:", parsedPackageName ?? body.packageName ?? "(unknown)");
 
-    if ((onChainId === undefined || !Number.isFinite(onChainId)) && !body.txHash) {
-      return NextResponse.json({ success: false, synced: false, hunt: null, error: "txHash or onChainId is required for hunt sync." }, { status: 400 });
-    }
-
     const huntData = {
       chainId: 2368,
       chainHuntId: onChainId,
       creatorAddress: creatorAddress || "unknown",
-      packageName: parsedPackageName || `unknown-${onChainId ?? body.txHash?.slice(2, 10) ?? "hunt"}`,
+      packageName: parsedPackageName || `unknown-${onChainId ?? txHash.slice(2, 10)}`,
       version: body.version || "unknown",
       scanDepth: body.scanDepth || "instant",
       rewardAmount: rewardAmount || "0",
@@ -118,39 +82,29 @@ export async function POST(req: NextRequest) {
       deadline: deadline ? new Date(deadline) : new Date(),
       termsHash: body.termsHash,
       metadataHash: body.metadataHash,
-      createdTx: body.txHash,
-      txHash: body.txHash,
+      createdTx: txHash,
+      txHash,
       status: "Open"
     };
 
-    const existingByTx = body.txHash ? await prisma.hunt.findUnique({ where: { txHash: body.txHash } }) : null;
-    const existingByOnChain = onChainId !== undefined ? await prisma.hunt.findUnique({ where: { onChainId } }) : null;
-    const target = existingByOnChain || existingByTx;
-
-    let hunt;
-    if (target) {
-      hunt = await prisma.hunt.update({
-        where: { id: target.id },
-        data: {
+    let hunt: Awaited<ReturnType<typeof prisma.hunt.create>>;
+    if (onChainId !== null) {
+      hunt = await prisma.hunt.upsert({
+        where: { onChainId },
+        update: huntData,
+        create: {
           ...huntData,
-          chainHuntId: onChainId ?? target.chainHuntId,
-          onChainId: onChainId ?? target.onChainId
+          onChainId
         }
       });
-      if (existingByTx && existingByOnChain && existingByTx.id !== existingByOnChain.id) {
-        console.warn("[Hunt Sync] Duplicate txHash/onChainId records detected. Keeping onChainId record as source of truth.");
-      }
     } else {
-      hunt = await prisma.hunt.create({
-        data: {
-          ...huntData,
-          chainHuntId: onChainId ?? null,
-          onChainId: onChainId ?? null
-        }
-      });
+      const existingByTx = await prisma.hunt.findUnique({ where: { txHash } });
+      hunt = existingByTx
+        ? await prisma.hunt.update({ where: { id: existingByTx.id }, data: huntData })
+        : await prisma.hunt.create({ data: { ...huntData, onChainId: null, chainHuntId: null } });
     }
 
-    return NextResponse.json({ success: true, synced: true, hunt });
+    return NextResponse.json({ success: true, synced: true, hunt, decodeLog });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown hunt sync error";
     return apiError("Hunt sync failed. Please try again.", 500, detail);
