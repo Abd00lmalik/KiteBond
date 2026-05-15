@@ -273,42 +273,46 @@ export default function InstantScanPage() {
         {mode === "select" ? (
           <motion.div
             key="mode-select"
-            initial={{ opacity: 0, y: -22 }}
+            initial={{ opacity: 0, y: -22, filter: "blur(8px)" }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
             className="mx-auto w-full max-w-[980px]"
+            style={{ filter: "blur(0px)" }}
           >
-            <Card variant="glass" className="mb-5 border-[var(--border-orange)] bg-[linear-gradient(180deg,rgba(12,12,26,0.92),rgba(8,8,18,0.9))] p-6">
+            <Card variant="glass" className="mb-5 border-[var(--border-orange)] bg-[linear-gradient(180deg,rgba(12,12,26,0.92),rgba(8,8,18,0.9))] p-7">
               <p className="label-sm label-orange">Select Scan Mode</p>
-              <h2 className="mt-3 text-[clamp(1.6rem,2.4vw,2.5rem)]">Choose Your Audit Pipeline</h2>
-              <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                Instant Scan is the live KiteBond security workflow. Deep Scan previews upcoming sandbox runtime analysis and is locked for now.
+              <h2 className="mt-3 text-[clamp(1.6rem,2.4vw,2.5rem)]">Choose Security Audit Depth</h2>
+              <p className="mt-3 max-w-[74ch] text-sm text-[var(--text-secondary)]">
+                Instant Scan is the live KiteBond product and runs the full safe npm investigation pipeline.
+                Deep Scan previews the upcoming runtime sandbox system and stays locked in this release.
               </p>
             </Card>
             <div className="scan-cards-row-premium">
               <motion.div
-                initial={{ opacity: 0, y: -24, scale: 0.97 }}
+                initial={{ opacity: 0, y: 24, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
+                transition={{ duration: 0.45, ease: "easeOut" }}
               >
                 <Card variant="green" interactive className="scan-card-premium scan-card-premium-live p-6">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Instant Scan</h3>
                     <span className="badge-live">Live</span>
                   </div>
-                  <p className="text-sm text-[var(--text-primary)]">
-                    {quota.freeUsed ? "1 USDT per scan - KiteAI Testnet" : "Your first scan is free"}
+                  <p className="scan-price-line">
+                    {quota.freeUsed ? "1 USDT per scan after free unlock" : "First scan free - 1 USDT per scan after"}
                   </p>
                   <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                    Full static npm audit with registry intelligence, dependency signals, lifecycle script analysis, safe tarball structure inspection, and Heurist-powered security reasoning.
+                    KiteBond&apos;s full safe npm security audit - registry intelligence, dependency analysis, script-risk
+                    detection, safe file-structure inspection, and Heurist-backed evidence reasoning.
                   </p>
-                  <ul className="mt-4 space-y-1 text-xs text-[var(--text-muted)]">
-                    <li>- Registry metadata and publish history verification</li>
-                    <li>- Maintainer, repository, license, and dependency risk signals</li>
-                    <li>- Lifecycle script malware-pattern checks</li>
-                    <li>- Safe file/tarball structure signals (no code execution)</li>
-                    <li>- Evidence-graded findings with Heurist-backed narrative</li>
+                  <ul className="scan-feature-list mt-4 space-y-1 text-xs text-[var(--text-muted)]">
+                    <li>Registry metadata and version checks</li>
+                    <li>Maintainer, repository, and license signals</li>
+                    <li>Dependency and typosquat risk analysis</li>
+                    <li>Lifecycle script and malware-pattern detection</li>
+                    <li>Safe tarball and file-structure inspection</li>
+                    <li>Heurist-powered evidence report</li>
                   </ul>
                   <button
                     type="button"
@@ -330,9 +334,9 @@ export default function InstantScanPage() {
                     <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Deep Scan</h3>
                     <span className="badge-soon">Coming Soon</span>
                   </div>
-                  <p className="relative z-[2] text-sm text-[var(--text-primary)]">Locked</p>
+                  <p className="scan-price-line relative z-[2]">Locked</p>
                   <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">
-                    Future isolated runtime sandbox analysis for high-risk packages with behavioral tracing, runtime monitoring, and defensive verification tests.
+                    Future runtime analysis for high-risk packages using isolated sandbox workers, behavioral tracing, runtime monitoring, and defensive verification tests.
                   </p>
                   <ul className="relative z-[2] mt-4 space-y-1">
                     <li className="scan-bullet-locked">Isolated dynamic sandbox execution</li>
@@ -504,13 +508,34 @@ export default function InstantScanPage() {
                     <Badge tone="verified" label={result.report.finalRecommendation.replace(/_/g, " ")} />
                     <Badge tone="pending" label={`confidence ${Math.round(result.report.confidence * 100)}%`} />
                   </div>
-                  {result.report.limitations.length > 0 && (
-                    <p className="mt-3 text-xs text-[var(--text-muted)]">
-                      Limitations: {result.report.limitations.join("; ")}
-                    </p>
-                  )}
                 </div>
               </div>
+
+              {result.report.findings && result.report.findings.length > 0 && (
+                <div className="mt-6 grid gap-3">
+                  <p className="label-sm text-[var(--green)]">Investigation Findings</p>
+                  {result.report.findings.map((finding, index) => (
+                    <Card key={`${finding.claim}-${index}`} variant="glass" className="p-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span
+                          className="rounded-[4px] border px-2 py-[2px] text-[0.62rem] font-semibold tracking-[0.08em]"
+                          style={{
+                            color: GRADE_STYLES[finding.evidenceGrade]?.color ?? "var(--text-muted)",
+                            borderColor: GRADE_STYLES[finding.evidenceGrade]?.color ?? "var(--border-dim)"
+                          }}
+                        >
+                          {GRADE_STYLES[finding.evidenceGrade]?.label ?? finding.evidenceGrade.toUpperCase()}
+                        </span>
+                        <span className="font-mono text-[0.68rem] text-[var(--text-muted)]">
+                          confidence {Math.round(finding.confidence * 100)}%
+                        </span>
+                      </div>
+                      <p className="text-sm text-[var(--text-primary)]">{finding.claim}</p>
+                      <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidence}</p>
+                    </Card>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-6 grid gap-4">
                 {result.report.signals.length === 0 && (
@@ -550,11 +575,11 @@ export default function InstantScanPage() {
 
               <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
                 <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
-                  Limitations &amp; Confidence
+                  Audit Scope
                 </summary>
                 <ul className="mt-3 space-y-1 text-xs text-[var(--text-secondary)]">
                   {result.report.limitations.map((item, idx) => (
-                    <li key={`${idx}-${item}`}>- {item}</li>
+                    <li key={`${idx}-${item}`}>{item}</li>
                   ))}
                 </ul>
               </details>

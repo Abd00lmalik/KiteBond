@@ -1,4 +1,5 @@
 export interface KnownIncident {
+  packageName: string;
   incidentType:
     | "supply_chain_compromise"
     | "maintainer_sabotage"
@@ -9,6 +10,8 @@ export interface KnownIncident {
   recommendation: string;
   source?: string;
   affectedVersions?: string[];
+  severityContribution: number;
+  affectedSeverityContribution: number;
   historicalScore: number;
   affectedVersionScore: number;
   maintenanceConcern?: string;
@@ -46,6 +49,7 @@ export function isIncidentVersionAffected(version: string, incident: KnownIncide
 
 export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
   colors: {
+    packageName: "colors",
     incidentType: "maintainer_sabotage",
     confidence: "confirmed",
     summary:
@@ -53,11 +57,14 @@ export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
     affectedVersions: ["1.4.1", "1.4.2"],
     recommendation: "Pin to 1.4.0 or migrate to chalk/picocolors for actively maintained color utilities.",
     source: "https://github.com/Marak/colors.js/issues/285",
+    severityContribution: 24,
+    affectedSeverityContribution: 48,
     historicalScore: 24,
     affectedVersionScore: 48,
     maintenanceConcern: "No stable successor release has replaced 1.4.0 after the 2022 sabotage incident."
   },
   faker: {
+    packageName: "faker",
     incidentType: "maintainer_sabotage",
     confidence: "confirmed",
     summary:
@@ -65,11 +72,14 @@ export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
     affectedVersions: ["6.6.6"],
     recommendation: "Use @faker-js/faker (community fork) and avoid the abandoned original line.",
     source: "https://github.com/Marak/faker.js/issues/1046",
+    severityContribution: 20,
+    affectedSeverityContribution: 42,
     historicalScore: 20,
     affectedVersionScore: 42,
     maintenanceConcern: "Original package stewardship effectively ended; community fork is now the safer path."
   },
   "event-stream": {
+    packageName: "event-stream",
     incidentType: "supply_chain_compromise",
     confidence: "confirmed",
     summary:
@@ -78,10 +88,13 @@ export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
     recommendation:
       "Avoid compromised versions, audit dependency trees, and prefer maintained safe lines with lockfile pinning.",
     source: "https://github.com/dominictarr/event-stream/issues/116",
+    severityContribution: 80,
+    affectedSeverityContribution: 92,
     historicalScore: 80,
     affectedVersionScore: 92
   },
   "ua-parser-js": {
+    packageName: "ua-parser-js",
     incidentType: "account_hijack",
     confidence: "confirmed",
     summary:
@@ -89,10 +102,13 @@ export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
     affectedVersions: ["0.7.29", "0.8.0", "1.0.0"],
     recommendation: "Use >=0.7.30 or >=1.0.1 and confirm lockfile integrity across CI.",
     source: "https://github.com/advisories/GHSA-pjwm-rvh2-c87w",
+    severityContribution: 44,
+    affectedSeverityContribution: 68,
     historicalScore: 44,
     affectedVersionScore: 68
   },
   "node-ipc": {
+    packageName: "node-ipc",
     incidentType: "maintainer_sabotage",
     confidence: "confirmed",
     summary:
@@ -100,10 +116,13 @@ export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
     affectedVersions: ["10.1.1", "10.1.2"],
     recommendation: "Pin to known-safe releases (for example 9.2.2) or migrate to alternatives.",
     source: "https://github.com/RIAEvangelist/node-ipc/issues/233",
+    severityContribution: 46,
+    affectedSeverityContribution: 66,
     historicalScore: 46,
     affectedVersionScore: 66
   },
   lodash: {
+    packageName: "lodash",
     incidentType: "historical_vulnerability",
     confidence: "high",
     summary:
@@ -111,6 +130,8 @@ export const KNOWN_INCIDENTS: Record<string, KnownIncident> = {
     affectedVersions: ["<4.17.21"],
     recommendation: "Use 4.17.21 or newer and keep dependency updates automated.",
     source: "https://github.com/advisories/GHSA-p6mc-m468-83gw",
+    severityContribution: 4,
+    affectedSeverityContribution: 18,
     historicalScore: 4,
     affectedVersionScore: 18
   }

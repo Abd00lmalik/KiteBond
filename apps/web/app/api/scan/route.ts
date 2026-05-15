@@ -25,12 +25,12 @@ type TarballInspection = {
   inspectionNote?: string;
 };
 const REPORT_LIMITATIONS = [
-  "Analysis is static and metadata-based. No package code is executed.",
-  "Tarball inspection covers file names and sizes only, not file content.",
-  "Dependency tree coverage is currently direct dependencies only.",
-  "Risk score reflects available public signals and may miss private-registry behavior.",
-  "Historical incident coverage is limited to documented known cases in the local incident database.",
-  "Heurist AI analysis is probabilistic and should be validated before production deployment."
+  "Static audit mode. Package code execution is intentionally disabled for operator safety.",
+  "File-structure inspection only. Tarball content is never executed.",
+  "Direct dependency coverage. Transitive dependency walk is reserved for Deep Scan.",
+  "Public registry intelligence only. Private registries and internal mirrors are out of scope.",
+  "Historical incidents are sourced from documented public advisories and incident records.",
+  "AI reasoning is constrained to supplied evidence and cross-checked against deterministic signals."
 ];
 
 function stageError(stage: ScanStage, error: string, status = 500) {
@@ -231,10 +231,11 @@ export async function POST(req: NextRequest) {
     riskScore,
     riskLevel,
     summary: heuristReport.summary,
+    findings: heuristReport.findings,
     signals: riskSignals,
     finalRecommendation:
       riskScore > 60 ? "avoid_until_manual_review" : riskScore >= 30 ? "use_with_caution" : "safe_to_review",
-    confidence: heuristReport.heuristCalled ? 0.74 : 0.54,
+    confidence: heuristReport.heuristCalled ? Math.max(0.56, 0.78 - heuristReport.unsupportedClaims * 0.04) : 0.54,
     heuristCalled: heuristReport.heuristCalled,
     limitations: heuristReport.heuristCalled ? REPORT_LIMITATIONS : [...REPORT_LIMITATIONS, "Heurist unavailable; deterministic fallback report returned."],
     methodology: heuristReport.heuristCalled
@@ -252,7 +253,10 @@ export async function POST(req: NextRequest) {
       weeklyDownloads: meta.weeklyDownloads,
       heuristCalled: heuristReport.heuristCalled,
       details: heuristReport.details,
-      flags: heuristReport.flags
+      flags: heuristReport.flags,
+      recommendation: heuristReport.recommendation,
+      unsupportedClaims: heuristReport.unsupportedClaims,
+      meshEvidenceUsed: heuristReport.meshEvidenceUsed
     }
   };
 

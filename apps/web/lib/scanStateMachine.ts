@@ -30,6 +30,12 @@ export type ScanReport = {
   finalRecommendation: "safe_to_review" | "use_with_caution" | "avoid_until_manual_review";
   confidence: number;
   heuristCalled?: boolean;
+  findings?: Array<{
+    claim: string;
+    evidence: string;
+    confidence: number;
+    evidenceGrade: "confirmed" | "suspicious" | "heuristic" | "missing_data" | "historical";
+  }>;
   limitations: string[];
   methodology: string;
   metadata: {

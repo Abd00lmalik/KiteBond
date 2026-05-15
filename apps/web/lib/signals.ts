@@ -193,7 +193,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
     const historicalSeverity: SecurityFlag["severity"] =
       incident.incidentType === "historical_vulnerability"
         ? "low"
-        : incident.historicalScore >= 70
+        : incident.severityContribution >= 70
           ? "high"
           : "medium";
     flags.push({
@@ -204,7 +204,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       } ${incident.recommendation}${incident.source ? ` Source: ${incident.source}` : ""}`,
       evidenceGrade: "historical"
     });
-    score += affectedVersion ? incident.affectedVersionScore : incident.historicalScore;
+    score += affectedVersion ? incident.affectedSeverityContribution : incident.severityContribution;
   }
 
   const typosquatCandidate = getTyposquatCandidate(inputLower);

@@ -47,47 +47,54 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.txHash) {
-      const provider = new ethers.JsonRpcProvider("https://rpc-testnet.gokite.ai/");
-      const receipt = await provider.getTransactionReceipt(body.txHash);
-      console.log("[Hunt Sync] Receipt found:", !!receipt);
-      console.log("[Hunt Sync] Logs count:", receipt?.logs?.length ?? 0);
-      if (!receipt) {
-        return NextResponse.json({ success: false, synced: false, hunt: null, error: "Transaction not found or not yet confirmed." }, { status: 404 });
-      }
-
-      const interfaces = [
-        new ethers.Interface(HuntRegistryEthersABI),
-        ...[
-          "event HuntCreated(uint256 indexed huntId, address indexed creator, string packageName, uint256 stake)",
-          "event TaskCreated(uint256 indexed taskId, address indexed creator, string packageName, uint256 amount)",
-          "event BountyCreated(uint256 indexed id, address creator, uint256 amount)",
-          "event BountyCreaed(uint256 indexed id, address creator, uint256 amount)",
-          "event HuntPosted(uint256 indexed id, address indexed poster)"
-        ].map((sig) => new ethers.Interface([sig]))
-      ];
-
-      for (const iface of interfaces) {
-        for (const log of receipt.logs) {
-          try {
-            const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
-            if (parsed && ["HuntCreated", "TaskCreated", "BountyCreated", "BountyCreaed", "HuntPosted"].includes(parsed.name)) {
-              const parsedId = Number(parsed.args.huntId ?? parsed.args.taskId ?? parsed.args.id ?? parsed.args[0]);
-              if (Number.isFinite(parsedId)) onChainId = parsedId;
-              creatorAddress = creatorAddress || String(parsed.args.creator ?? parsed.args.owner ?? parsed.args.poster ?? receipt.from ?? "");
-              parsedPackageName = parsedPackageName || (parsed.args.packageName ? String(parsed.args.packageName) : undefined);
-              rewardAmount = rewardAmount || String(parsed.args.rewardAmount ?? parsed.args.amount ?? "");
-              stakeRequired = stakeRequired || String(parsed.args.stakeRequired ?? parsed.args.stake ?? parsed.args.amount ?? "");
-              const parsedDeadline = Number(parsed.args.deadline ?? 0n);
-              if (!deadline && Number.isFinite(parsedDeadline) && parsedDeadline > 0) {
-                deadline = new Date(parsedDeadline * 1000).toISOString();
-              }
-              break;
-            }
-          } catch {
-            // Try the next event signature/log combination.
-          }
+      try {
+        const provider = new ethers.JsonRpcProvider("https://rpc-testnet.gokite.ai/");
+        const receipt = await provider.getTransactionReceipt(body.txHash);
+        console.log("[Hunt Sync] Receipt found:", !!receipt);
+        console.log("[Hunt Sync] Logs count:", receipt?.logs?.length ?? 0);
+        if (!receipt) {
+          return NextResponse.json({ success: false, synced: false, hunt: null, error: "Transaction not found or not yet confirmed." }, { status: 404 });
         }
-        if (onChainId !== undefined && Number.isFinite(onChainId)) break;
+
+        const interfaces = [
+          new ethers.Interface(HuntRegistryEthersABI),
+          ...[
+            "event HuntCreated(uint256 indexed huntId, address indexed creator, string packageName, uint256 stake)",
+            "event TaskCreated(uint256 indexed taskId, address indexed creator, string packageName, uint256 amount)",
+            "event BountyCreated(uint256 indexed id, address creator, uint256 amount)",
+            "event BountyCreaed(uint256 indexed id, address creator, uint256 amount)",
+            "event HuntPosted(uint256 indexed id, address indexed poster)"
+          ].map((sig) => new ethers.Interface([sig]))
+        ];
+
+        for (const iface of interfaces) {
+          for (const log of receipt.logs) {
+            try {
+              const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+              if (parsed && ["HuntCreated", "TaskCreated", "BountyCreated", "BountyCreaed", "HuntPosted"].includes(parsed.name)) {
+                const parsedId = Number(parsed.args.huntId ?? parsed.args.taskId ?? parsed.args.id ?? parsed.args[0]);
+                if (Number.isFinite(parsedId)) onChainId = parsedId;
+                creatorAddress = creatorAddress || String(parsed.args.creator ?? parsed.args.owner ?? parsed.args.poster ?? receipt.from ?? "");
+                parsedPackageName = parsedPackageName || (parsed.args.packageName ? String(parsed.args.packageName) : undefined);
+                rewardAmount = rewardAmount || String(parsed.args.rewardAmount ?? parsed.args.amount ?? "");
+                stakeRequired = stakeRequired || String(parsed.args.stakeRequired ?? parsed.args.stake ?? parsed.args.amount ?? "");
+                const parsedDeadline = Number(parsed.args.deadline ?? 0n);
+                if (!deadline && Number.isFinite(parsedDeadline) && parsedDeadline > 0) {
+                  deadline = new Date(parsedDeadline * 1000).toISOString();
+                }
+                break;
+              }
+            } catch {
+              // Try the next event signature/log combination.
+            }
+          }
+          if (onChainId !== undefined && Number.isFinite(onChainId)) break;
+        }
+      } catch (error) {
+        console.warn(
+          "[Hunt Sync] Receipt parse failed, falling back to provided payload:",
+          error instanceof Error ? error.message : error
+        );
       }
     }
 
