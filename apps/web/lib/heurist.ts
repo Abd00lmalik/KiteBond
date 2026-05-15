@@ -11,7 +11,7 @@ type ReportSeverity = "critical" | "high" | "medium" | "low" | "clean";
 
 export interface HeuristFinding {
   claim: string;
-  evidence: string;
+  evidenceSource: string;
   confidence: number;
   evidenceGrade: EvidenceGrade;
 }
@@ -61,7 +61,7 @@ interface MeshIntel {
 interface ParsedHeuristResponse {
   severity?: ReportSeverity;
   summary?: string;
-  findings?: Array<Partial<HeuristFinding>>;
+  findings?: Array<Partial<HeuristFinding> & { evidence?: string }>;
   riskScore?: number;
   recommendation?: "use" | "caution" | "investigate" | "avoid";
   details?: string[];
@@ -106,8 +106,8 @@ function tokenize(value: string): string[] {
     .filter((token) => token.length >= 4);
 }
 
-function claimIsSupported(claim: string, evidence: string, corpus: string[]): boolean {
-  const tokens = Array.from(new Set([...tokenize(claim), ...tokenize(evidence)])).slice(0, 20);
+function claimIsSupported(claim: string, evidenceSource: string, corpus: string[]): boolean {
+  const tokens = Array.from(new Set([...tokenize(claim), ...tokenize(evidenceSource)])).slice(0, 20);
   if (tokens.length === 0) return false;
   return tokens.some((token) => corpus.some((entry) => entry.includes(token)));
 }
@@ -122,7 +122,7 @@ function normalizeFindings(
     ? parsed.findings
     : (parsed.details ?? []).map((detail) => ({
         claim: detail,
-        evidence: detail,
+        evidenceSource: detail,
         confidence: 0.58,
         evidenceGrade: "heuristic" as EvidenceGrade
       }));
@@ -131,10 +131,18 @@ function normalizeFindings(
   const findings = rawFindings
     .map((entry) => {
       const claim = typeof entry.claim === "string" ? entry.claim.trim() : "";
-      const evidence = typeof entry.evidence === "string" ? entry.evidence.trim() : "";
-      if (!claim || !evidence) return null;
+      const legacyEvidence =
+        "evidence" in entry && typeof (entry as { evidence?: unknown }).evidence === "string"
+          ? ((entry as { evidence: string }).evidence ?? "")
+          : "";
+      const evidenceSourceRaw =
+        typeof entry.evidenceSource === "string"
+          ? entry.evidenceSource
+          : legacyEvidence;
+      const evidenceSource = evidenceSourceRaw.trim();
+      if (!claim || !evidenceSource) return null;
 
-      const supported = claimIsSupported(claim, evidence, corpus);
+      const supported = claimIsSupported(claim, evidenceSource, corpus);
       if (!supported) unsupportedClaims += 1;
 
       const normalizedConfidence = typeof entry.confidence === "number" ? Math.max(0, Math.min(1, entry.confidence)) : 0.6;
@@ -151,7 +159,7 @@ function normalizeFindings(
 
       return {
         claim,
-        evidence,
+        evidenceSource,
         confidence: supported ? normalizedConfidence : Math.min(normalizedConfidence, 0.55),
         evidenceGrade: supported ? normalizedGrade : "heuristic"
       };
@@ -255,7 +263,7 @@ function buildFallback(packageName: string, input: AnalysisInput, heuristCalled:
   const severity = scoreToReportSeverity(riskScore);
   const fallbackFindings = input.signalFlags.slice(0, 5).map((flag) => ({
     claim: flag,
-    evidence: flag,
+    evidenceSource: flag,
     confidence: 0.55,
     evidenceGrade: "heuristic" as EvidenceGrade
   }));
@@ -309,7 +317,7 @@ export async function analyzePackageWithHeurist(
     '  "findings": [',
     "    {",
     '      "claim": "string",',
-    '      "evidence": "string",',
+    '      "evidenceSource": "string",',
     '      "confidence": 0-1,',
     '      "evidenceGrade": "confirmed"|"suspicious"|"heuristic"|"missing_data"|"historical"',
     "    }",
@@ -415,7 +423,7 @@ export async function analyzePackageWithHeurist(
         : recommendationForSeverity(normalizedSeverity);
 
     const details = findings.length > 0
-      ? findings.map((finding) => `${finding.claim} -> ${finding.evidence}`)
+      ? findings.map((finding) => `${finding.claim} -> ${finding.evidenceSource}`)
       : (parsed.details ?? []).slice(0, 4);
 
     const flags = findings.length > 0

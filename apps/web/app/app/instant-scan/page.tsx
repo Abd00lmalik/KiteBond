@@ -274,11 +274,10 @@ export default function InstantScanPage() {
           <motion.div
             key="mode-select"
             initial={{ opacity: 0, y: -22, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.45, ease: "easeOut" }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
             className="mx-auto w-full max-w-[980px]"
-            style={{ filter: "blur(0px)" }}
           >
             <Card variant="glass" className="mb-5 border-[var(--border-orange)] bg-[linear-gradient(180deg,rgba(12,12,26,0.92),rgba(8,8,18,0.9))] p-7">
               <p className="label-sm label-orange">Select Scan Mode</p>
@@ -531,7 +530,7 @@ export default function InstantScanPage() {
                         </span>
                       </div>
                       <p className="text-sm text-[var(--text-primary)]">{finding.claim}</p>
-                      <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidence}</p>
+                      <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidenceSource}</p>
                     </Card>
                   ))}
                 </div>

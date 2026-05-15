@@ -32,7 +32,7 @@ export type ScanReport = {
   heuristCalled?: boolean;
   findings?: Array<{
     claim: string;
-    evidence: string;
+    evidenceSource: string;
     confidence: number;
     evidenceGrade: "confirmed" | "suspicious" | "heuristic" | "missing_data" | "historical";
   }>;
