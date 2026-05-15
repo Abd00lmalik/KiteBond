@@ -1,5 +1,5 @@
 import type { NpmPackageMeta } from "./npm";
-import { KNOWN_INCIDENTS } from "./knownIncidents";
+import { KNOWN_INCIDENTS, isIncidentVersionAffected } from "./knownIncidents";
 import type { TarballInspection } from "./tarball";
 
 export interface SecuritySignals {
@@ -171,6 +171,13 @@ const MALWARE_SCRIPT_PATTERNS = [
   /require\s*\(\s*['"]child_process['"].*exec/i,
   /\bbase64\b.*\|\s*\bbash\b/i
 ];
+const SUSPICIOUS_DEP_PATTERNS = [
+  /^[a-z]{1,2}$/i,
+  /(^|-)postinstall(-|$)/i,
+  /(^|-)install(-|$)/i,
+  /(^|-)loader(-|$)/i,
+  /(fix|patch|hotfix)$/i
+];
 
 export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarball?: TarballInspection | null): SecuritySignals {
   const flags: SecurityFlag[] = [];
@@ -182,26 +189,34 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
 
   const incident = KNOWN_INCIDENTS[nameLower];
   if (incident) {
+    const affectedVersion = isIncidentVersionAffected(meta.version, incident);
+    const historicalSeverity: SecurityFlag["severity"] =
+      incident.incidentType === "historical_vulnerability"
+        ? "low"
+        : incident.historicalScore >= 70
+          ? "high"
+          : "medium";
     flags.push({
       code: "KNOWN_INCIDENT",
-      severity: incident.severity,
-      message: `${incident.summary}${incident.affectedVersions ? ` Affected: ${incident.affectedVersions}.` : ""} ${incident.recommendation}`,
+      severity: affectedVersion ? "critical" : historicalSeverity,
+      message: `${incident.summary}${incident.affectedVersions?.length ? ` Affected versions: ${incident.affectedVersions.join(", ")}.` : ""} ${
+        affectedVersion ? "The scanned version appears to match an affected range." : "No direct affected-version match was detected for this scan."
+      } ${incident.recommendation}${incident.source ? ` Source: ${incident.source}` : ""}`,
       evidenceGrade: "historical"
     });
-    score += incident.severity === "critical" ? 50 : incident.severity === "high" ? 30 : incident.severity === "medium" ? 20 : 5;
+    score += affectedVersion ? incident.affectedVersionScore : incident.historicalScore;
   }
 
-  for (const known of KNOWN_POPULAR) {
-    const distance = levenshtein(inputLower, known);
-    if (isTyposquatRisk(inputLower, known, distance)) {
-      flags.push({
-        code: "TYPOSQUAT_RISK",
-        severity: "critical",
-        message: `Package name "${inputLower}" is ${distance} character(s) from well-known package "${known}". Possible typosquat.`,
-        evidenceGrade: "suspicious"
-      });
-      score += 45;
-    }
+  const typosquatCandidate = getTyposquatCandidate(inputLower);
+  if (typosquatCandidate) {
+    const typoSeverity = typosquatCandidate.distance <= 1 ? "critical" : "high";
+    flags.push({
+      code: "TYPOSQUAT_RISK",
+      severity: typoSeverity,
+      message: `Package name "${inputLower}" is ${typosquatCandidate.distance} character(s) from "${typosquatCandidate.target}". Potential typosquat.`,
+      evidenceGrade: "suspicious"
+    });
+    score += typoSeverity === "critical" ? 45 : 28;
   }
 
   if (!meta.repository) {
@@ -212,6 +227,14 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       evidenceGrade: "missing_data"
     });
     score += 15;
+  } else if (!repositoryLooksRelated(meta.repository, meta.name)) {
+    flags.push({
+      code: "REPOSITORY_MISMATCH",
+      severity: "medium",
+      message: "Repository URL does not clearly match the package identity. Verify ownership and publish provenance.",
+      evidenceGrade: "suspicious"
+    });
+    score += 10;
   }
 
   if (!meta.license || meta.license === "none" || meta.license === "UNLICENSED") {
@@ -320,6 +343,17 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
     score += 12;
   }
 
+  const publishAgeDays = meta.publishedAt ? daysSince(meta.publishedAt) : null;
+  if (publishAgeDays !== null && publishAgeDays > 365 * 2) {
+    flags.push({
+      code: "NO_ACTIVE_MAINTENANCE",
+      severity: "medium",
+      message: `Latest release is ${Math.round(publishAgeDays)} day(s) old. Maintenance appears stagnant.`,
+      evidenceGrade: "heuristic"
+    });
+    score += 10;
+  }
+
   if (meta.totalVersions === 1) {
     flags.push({
       code: "SINGLE_VERSION",
@@ -346,6 +380,17 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       evidenceGrade: "heuristic"
     });
     score += 12;
+  }
+
+  const suspiciousDeps = meta.dependencyNames.filter((dep) => SUSPICIOUS_DEP_PATTERNS.some((pattern) => pattern.test(dep)));
+  if (suspiciousDeps.length > 0) {
+    flags.push({
+      code: "SUSPICIOUS_DEPENDENCY_NAMES",
+      severity: suspiciousDeps.length > 2 ? "high" : "medium",
+      message: `Dependency names with suspicious patterns detected: ${suspiciousDeps.slice(0, 6).join(", ")}.`,
+      evidenceGrade: "suspicious"
+    });
+    score += suspiciousDeps.length > 2 ? 18 : 10;
   }
 
   if (!meta.description || meta.description.trim().length < 10) {
@@ -402,17 +447,54 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
 
   if (isTopPackage) {
     score = Math.max(0, score - 25);
-    const filteredFlags = flags.filter((flag) => flag.severity === "critical" || flag.severity === "high");
+    const filteredFlags = flags.filter(
+      (flag) => flag.severity === "critical" || flag.severity === "high" || (flag.code === "KNOWN_INCIDENT" && flag.severity !== "low")
+    );
     return { riskScore: Math.min(100, score), flags: filteredFlags };
   }
 
   return { riskScore: Math.min(100, score), flags };
 }
 
+function getTyposquatCandidate(inputLower: string): { target: string; distance: number } | null {
+  if (!inputLower || inputLower.length < 3) return null;
+  let candidate: { target: string; distance: number } | null = null;
+  for (const known of KNOWN_POPULAR) {
+    if (known === inputLower) continue;
+    const distance = levenshtein(inputLower, known);
+    if (!isTyposquatRisk(inputLower, known, distance)) continue;
+    if (!candidate || distance < candidate.distance) {
+      candidate = { target: known, distance };
+    }
+  }
+  return candidate;
+}
+
 function isTyposquatRisk(inputLower: string, known: string, distance: number): boolean {
   if (inputLower === known) return false;
   const lengthDelta = Math.abs(inputLower.length - known.length);
-  return distance <= 1 || (distance === 2 && inputLower.length <= 8 && known.length <= 8 && lengthDelta <= 1);
+  const sharedPrefix = commonPrefixLen(inputLower, known);
+  if (distance <= 1 && lengthDelta <= 1 && sharedPrefix >= 2) return true;
+  return distance === 2 && inputLower.length <= 8 && known.length <= 8 && lengthDelta <= 1 && sharedPrefix >= 3;
+}
+
+function commonPrefixLen(a: string, b: string): number {
+  const limit = Math.min(a.length, b.length);
+  let idx = 0;
+  while (idx < limit && a[idx] === b[idx]) idx += 1;
+  return idx;
+}
+
+function repositoryLooksRelated(repositoryUrl: string, packageName: string): boolean {
+  const normalizedRepo = repositoryUrl.toLowerCase();
+  const normalizedPackage = packageName.toLowerCase().replace(/^@/, "").replace(/\//g, "-");
+  return normalizedRepo.includes(packageName.toLowerCase()) || normalizedRepo.includes(normalizedPackage);
+}
+
+function daysSince(isoTime: string): number | null {
+  const parsed = new Date(isoTime);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return (Date.now() - parsed.getTime()) / 86_400_000;
 }
 
 function levenshtein(a: string, b: string): number {

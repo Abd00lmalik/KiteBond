@@ -26,6 +26,13 @@ interface AnalysisInput {
   dependencyCount: number;
   signalFlags: string[];
   signalScore: number;
+  evidenceBreakdown?: {
+    confirmed: number;
+    suspicious: number;
+    heuristic: number;
+    missing_data: number;
+    historical: number;
+  };
   phase?: string;
 }
 
@@ -93,12 +100,11 @@ export async function analyzePackageWithHeurist(
     "  low      = minor concerns, single maintainer, slight name similarity",
     "  clean    = no significant risk factors found",
     "",
-    "IMPORTANT: For well-established packages with millions of weekly downloads (lodash, react, express, axios, etc.),",
-    "your analysis should reflect their reputation and track record. Do not flag them as high risk purely due to",
-    "automated signals like single maintainer if they have years of open development history.",
-    "Your severity rating must be calibrated to real-world risk, not just signal counts.",
-    "A package with 50M weekly downloads and 10 years of history is not high risk without specific evidence of",
-    "compromise, typosquatting, or malicious behavior."
+    "Calibration rules:",
+    "  - Do not assign high/critical severity from weak heuristics alone (single maintainer, moderate downloads, sparse metadata).",
+    "  - Treat historical incidents as documented context and distinguish whether the scanned version is affected.",
+    "  - If evidence is ambiguous, explicitly describe uncertainty instead of overstating risk.",
+    "  - Every conclusion must be grounded in the provided evidence."
   ].join("\n");
 
   const userPrompt = [
@@ -112,11 +118,15 @@ export async function analyzePackageWithHeurist(
     `Has TypeScript types: ${input.hasTypes}`,
     `Has install/postinstall scripts: ${input.hasInstallScript}`,
     `Runtime dependency count: ${input.dependencyCount}`,
+    input.evidenceBreakdown
+      ? `Evidence counts - confirmed:${input.evidenceBreakdown.confirmed}, suspicious:${input.evidenceBreakdown.suspicious}, heuristic:${input.evidenceBreakdown.heuristic}, missing_data:${input.evidenceBreakdown.missing_data}, historical:${input.evidenceBreakdown.historical}`
+      : "",
     input.phase ? `Analysis phase: ${input.phase}` : "",
     `Pre-computed risk score: ${input.signalScore}/100`,
     "Pre-computed signal flags:",
     ...input.signalFlags.map((flag) => `  - ${flag}`),
     "",
+    "Do not invent findings that are not present in the evidence list.",
     "Provide your security assessment as JSON only."
   ].join("\n");
 

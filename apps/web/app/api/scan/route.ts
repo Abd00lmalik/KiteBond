@@ -55,13 +55,11 @@ export async function POST(req: NextRequest) {
     return apiError("Invalid JSON body.", 400);
   }
 
-  const rawPackageName = (body.package ?? body.packageName ?? "").trim().toLowerCase();
-  if (!rawPackageName) return apiError("Package name is required.", 400);
-  if (rawPackageName.length > 214) return apiError("Package name too long.", 400);
-  if (/[\/\\<>]/.test(rawPackageName)) return apiError("Invalid package name characters.", 400);
-
-  const packageName = rawPackageName.split("@")[0] || rawPackageName;
-  if (!packageName) return apiError("Package name is required.", 400);
+  const rawPackageInput = (body.package ?? body.packageName ?? "").trim();
+  const parsedPackage = parsePackageInput(rawPackageInput);
+  if (!parsedPackage.ok) return apiError(parsedPackage.error, 400);
+  const packageName = parsedPackage.name.toLowerCase();
+  const requestedVersion = body.version?.trim() || parsedPackage.version || "latest";
 
   const address = (body.address ?? body.walletAddress ?? "").trim().toLowerCase() || "anonymous";
   const rawScanType = (body.scanType ?? body.scanDepth ?? "instant").trim().toLowerCase();
@@ -141,7 +139,7 @@ export async function POST(req: NextRequest) {
 
   let meta;
   try {
-    meta = await fetchNpmMeta(packageName, body.version ?? "latest");
+    meta = await fetchNpmMeta(packageName, requestedVersion);
   } catch (err) {
     return stageError(
       "resolve",
@@ -160,6 +158,13 @@ export async function POST(req: NextRequest) {
   }
 
   const signals = extractSignals(meta, packageName, tarballInfo);
+  const evidenceBreakdown = signals.flags.reduce(
+    (acc, flag) => {
+      acc[flag.evidenceGrade] += 1;
+      return acc;
+    },
+    { confirmed: 0, suspicious: 0, heuristic: 0, missing_data: 0, historical: 0 }
+  );
   const tarballSection = tarballInfo
     ? [
         "Tarball inspection (file names/sizes only):",
@@ -185,7 +190,8 @@ export async function POST(req: NextRequest) {
       hasInstallScript: meta.hasInstallScript,
       dependencyCount: meta.dependencyCount,
       signalFlags: [...signals.flags.map((flag) => flag.message), tarballSection],
-      signalScore: signals.riskScore
+      signalScore: signals.riskScore,
+      evidenceBreakdown
     });
   } catch (err) {
     return NextResponse.json(
@@ -323,9 +329,44 @@ function recommendationForFlag(code: string) {
   if (code === "TYPOSQUAT_RISK") return "Verify package identity before install and compare against the known package.";
   if (code === "MALICIOUS_INSTALL_SCRIPT") return "Do not install until the lifecycle script is manually reviewed and verified benign.";
   if (code === "HAS_INSTALL_SCRIPT") return "Review lifecycle scripts manually before installing this package in sensitive environments.";
+  if (code === "SUSPICIOUS_DEPENDENCY_NAMES") return "Inspect dependency provenance and lock exact versions before adoption.";
+  if (code === "REPOSITORY_MISMATCH") return "Verify that npm publisher and repository ownership are controlled by the same trusted maintainer.";
+  if (code === "NO_ACTIVE_MAINTENANCE") return "Consider maintained alternatives or apply stricter pinning and internal review.";
   if (code === "BINARY_FILES_IN_PACKAGE") return "Audit binary artifacts and verify integrity before adopting this dependency.";
   if (code === "SCRIPT_FILES_IN_PACKAGE") return "Review root-level script files and remove from trusted environments if unnecessary.";
   if (code === "NO_REPOSITORY") return "Treat source provenance as weak until repository ownership is verified.";
   if (code === "NO_LICENSE") return "Confirm legal usage terms before adopting this dependency.";
   return "Review this metadata signal before using the package in production.";
+}
+
+function parsePackageInput(value: string): { ok: true; name: string; version?: string } | { ok: false; error: string } {
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: false, error: "Package name is required." };
+  if (trimmed.length > 214) return { ok: false, error: "Package name too long." };
+
+  let name = trimmed;
+  let version: string | undefined;
+
+  if (trimmed.startsWith("@")) {
+    const slash = trimmed.indexOf("/");
+    if (slash <= 1) return { ok: false, error: "Invalid scoped package name." };
+    const secondAt = trimmed.indexOf("@", slash + 1);
+    if (secondAt > slash + 1) {
+      name = trimmed.slice(0, secondAt);
+      version = trimmed.slice(secondAt + 1) || undefined;
+    }
+  } else {
+    const at = trimmed.lastIndexOf("@");
+    if (at > 0) {
+      name = trimmed.slice(0, at);
+      version = trimmed.slice(at + 1) || undefined;
+    }
+  }
+
+  const normalizedName = name.toLowerCase();
+  if (!/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(normalizedName)) {
+    return { ok: false, error: "Invalid package name." };
+  }
+
+  return { ok: true, name: normalizedName, version };
 }

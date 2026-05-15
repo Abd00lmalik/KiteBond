@@ -80,6 +80,7 @@ export default function AgentHuntPage() {
   const [meta, setMeta] = useState<PackageMeta | null>(null);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [txWarning, setTxWarning] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [pendingSync, setPendingSync] = useState<{
     txHash: string;
     onChainId: string;
@@ -141,6 +142,12 @@ export default function AgentHuntPage() {
 
   async function submitHunt() {
     setTxWarning(null);
+    let createdTxHash: string | null = null;
+    let createdOnChainId: string | null = null;
+    let createdResolvedVersion: string | null = null;
+    let createdDeadlineIso: string | null = null;
+    let createdTermsHash: string | null = null;
+    let createdMetadataHash: string | null = null;
     if (!isConnected || !address || !preflight.walletConnected) {
       setTxWarning("Connect your wallet before creating a hunt.");
       toast.error("Connect your wallet before creating a hunt.");
@@ -208,8 +215,26 @@ export default function AgentHuntPage() {
         stakeRequired,
         deadlineSeconds
       });
+      createdTxHash = hash;
+      createdOnChainId = String(chainHuntId);
+      createdResolvedVersion = resolvedVersion;
+      createdDeadlineIso = deadline.toISOString();
 
       const metadataHash = keccak256(stringToHex(JSON.stringify(meta || {})));
+      createdTermsHash = termsHash;
+      createdMetadataHash = metadataHash;
+      const syncPayload = {
+        txHash: hash,
+        onChainId: String(chainHuntId),
+        creatorAddress: address,
+        packageName: packageName.trim(),
+        version: resolvedVersion,
+        rewardAmount,
+        stakeRequired,
+        deadline: createdDeadlineIso,
+        termsHash,
+        metadataHash
+      };
       const json = await safeFetch<{
         success?: boolean;
         onChainSuccess?: boolean;
@@ -238,16 +263,9 @@ export default function AgentHuntPage() {
       });
       if (json.onChainSuccess && !json.dbSaved) {
         setPendingSync({
-          txHash: json.txHash || hash,
-          onChainId: json.onChainId || String(chainHuntId),
-          creatorAddress: address,
-          packageName: packageName.trim(),
-          version: resolvedVersion,
-          rewardAmount,
-          stakeRequired,
-          deadline: deadline.toISOString(),
-          termsHash,
-          metadataHash
+          ...syncPayload,
+          txHash: json.txHash || syncPayload.txHash,
+          onChainId: json.onChainId || syncPayload.onChainId
         });
         const message = json.message || "Hunt confirmed on-chain, but indexing failed. Click Sync Hunt to retry.";
         setTxWarning(message);
@@ -259,6 +277,20 @@ export default function AgentHuntPage() {
       router.push(`/app/hunts/${json.data.id}`);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt creation failed.";
+      if (!pendingSync && createdTxHash && createdOnChainId && createdResolvedVersion && createdDeadlineIso && createdTermsHash && createdMetadataHash) {
+        setPendingSync({
+          txHash: createdTxHash,
+          onChainId: createdOnChainId,
+          creatorAddress: address,
+          packageName: packageName.trim(),
+          version: createdResolvedVersion,
+          rewardAmount,
+          stakeRequired,
+          deadline: createdDeadlineIso,
+          termsHash: createdTermsHash,
+          metadataHash: createdMetadataHash
+        });
+      }
       setTxWarning(message);
       toast.error(message);
     }
@@ -266,7 +298,13 @@ export default function AgentHuntPage() {
 
   async function syncHunt() {
     if (!pendingSync) return;
+    if (!pendingSync.txHash) {
+      setTxWarning("Cannot sync yet: missing transaction hash from chain receipt.");
+      toast.error("Cannot sync yet: missing transaction hash.");
+      return;
+    }
     try {
+      setIsSyncing(true);
       const json = await safeFetch<{ synced?: boolean; hunt?: { id: string }; error?: string }>("/api/hunt/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -275,11 +313,14 @@ export default function AgentHuntPage() {
       if (!json.synced || !json.hunt) throw new Error(json.error || "Hunt sync failed.");
       toast.success("Hunt indexed successfully.");
       setPendingSync(null);
+      router.refresh();
       router.push(`/app/hunts/${json.hunt.id}`);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : error instanceof Error ? error.message : "Hunt sync failed.";
       setTxWarning(message);
       toast.error(message);
+    } finally {
+      setIsSyncing(false);
     }
   }
 
@@ -388,9 +429,10 @@ export default function AgentHuntPage() {
                 <button
                   type="button"
                   onClick={syncHunt}
+                  disabled={isSyncing}
                   className="mt-3 block rounded-[var(--radius-sm)] border border-[var(--cyber-yellow)] px-3 py-1.5 font-mono text-xs uppercase tracking-[0.08em]"
                 >
-                  Sync Hunt
+                  {isSyncing ? "Syncing..." : "Sync Hunt"}
                 </button>
               )}
             </div>

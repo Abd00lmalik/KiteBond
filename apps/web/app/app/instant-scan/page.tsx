@@ -3,7 +3,8 @@
 import { useEffect, useReducer, useState } from "react";
 import CountUp from "react-countup";
 import Link from "next/link";
-import { ArrowRight, Copy, Loader2, ReceiptText, ShieldCheck } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, ArrowRight, Copy, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
@@ -57,6 +58,7 @@ export default function InstantScanPage() {
   const { recordReceipt, isRecordingReceipt } = useRecordScanReceipt();
   const [packageName, setPackageName] = useState("lodash");
   const [version, setVersion] = useState("latest");
+  const [mode, setMode] = useState<"select" | "instant">("select");
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
   const [stage, setStage] = useState<CompactStage>("idle");
   const [failedStep, setFailedStep] = useState<CompactStepKey | undefined>();
@@ -179,6 +181,7 @@ export default function InstantScanPage() {
         dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
       }
 
+      setStage("resolving");
       const json = await safeFetch<{ success?: boolean; data?: ScanResult; error?: string }>("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,6 +202,7 @@ export default function InstantScanPage() {
       dispatch({ type: "METADATA_INSPECTED" });
       dispatch({ type: "SIGNALS_COMPUTED" });
       onchainScanId = json.data.onchainScanId;
+      setStage("analyzing");
 
       dispatch({ type: "HEURIST_COMPLETE", payload: { partial: json.data.report } });
       dispatch({
@@ -265,10 +269,113 @@ export default function InstantScanPage() {
         title="Package Scanner"
         description="Scan any npm package by name. KiteBond uses registry metadata, deterministic risk signals, and Heurist analysis without executing package code."
       />
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(420px,0.68fr)]">
+      <AnimatePresence mode="wait">
+        {mode === "select" ? (
+          <motion.div
+            key="mode-select"
+            initial={{ opacity: 0, y: -22 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="mx-auto w-full max-w-[980px]"
+          >
+            <Card variant="glass" className="mb-5 border-[var(--border-orange)] bg-[linear-gradient(180deg,rgba(12,12,26,0.92),rgba(8,8,18,0.9))] p-6">
+              <p className="label-sm label-orange">Select Scan Mode</p>
+              <h2 className="mt-3 text-[clamp(1.6rem,2.4vw,2.5rem)]">Choose Your Audit Pipeline</h2>
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                Instant Scan is the live KiteBond security workflow. Deep Scan previews upcoming sandbox runtime analysis and is locked for now.
+              </p>
+            </Card>
+            <div className="scan-cards-row-premium">
+              <motion.div
+                initial={{ opacity: 0, y: -24, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <Card variant="green" interactive className="scan-card-premium scan-card-premium-live p-6">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Instant Scan</h3>
+                    <span className="badge-live">Live</span>
+                  </div>
+                  <p className="text-sm text-[var(--text-primary)]">
+                    {quota.freeUsed ? "1 USDT per scan - KiteAI Testnet" : "Your first scan is free"}
+                  </p>
+                  <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                    Full static npm audit with registry intelligence, dependency signals, lifecycle script analysis, safe tarball structure inspection, and Heurist-powered security reasoning.
+                  </p>
+                  <ul className="mt-4 space-y-1 text-xs text-[var(--text-muted)]">
+                    <li>- Registry metadata and publish history verification</li>
+                    <li>- Maintainer, repository, license, and dependency risk signals</li>
+                    <li>- Lifecycle script malware-pattern checks</li>
+                    <li>- Safe file/tarball structure signals (no code execution)</li>
+                    <li>- Evidence-graded findings with Heurist-backed narrative</li>
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setMode("instant")}
+                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)]"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Run Instant Scan
+                  </button>
+                </Card>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, y: -24, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.45, ease: "easeOut", delay: 0.05 }}
+              >
+                <Card className="scan-card-premium scan-card-premium-locked p-6">
+                  <div className="relative z-[2] mb-3 flex items-center justify-between gap-3">
+                    <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Deep Scan</h3>
+                    <span className="badge-soon">Coming Soon</span>
+                  </div>
+                  <p className="relative z-[2] text-sm text-[var(--text-primary)]">Locked</p>
+                  <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">
+                    Future isolated runtime sandbox analysis for high-risk packages with behavioral tracing, runtime monitoring, and defensive verification tests.
+                  </p>
+                  <ul className="relative z-[2] mt-4 space-y-1">
+                    <li className="scan-bullet-locked">Isolated dynamic sandbox execution</li>
+                    <li className="scan-bullet-locked">Behavioral trace capture</li>
+                    <li className="scan-bullet-locked">Runtime package monitoring</li>
+                    <li className="scan-bullet-locked">Defensive verification tests</li>
+                    <li className="scan-bullet-locked">Execution proof and attestation</li>
+                  </ul>
+                  <button type="button" disabled className="btn-scan-locked relative z-[2] mt-5">
+                    <Lock className="mr-2 inline h-3.5 w-3.5" />
+                    Locked - Coming Soon
+                  </button>
+                </Card>
+              </motion.div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="scanner"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(420px,0.68fr)]"
+          >
         <div className="space-y-5">
           <Card variant="orange" className="p-6">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="badge-live">Instant Scan</span>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  {quota.freeUsed ? "1 USDT per scan - KiteAI Testnet" : "Your first scan is free"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMode("select")}
+                className="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-default)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition hover:border-[var(--border-orange)] hover:text-[var(--text-primary)]"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Change Mode
+              </button>
+            </div>
             <div className="grid gap-4 md:grid-cols-[1fr_180px]">
               <label>
                 <span className="label-sm mb-2 block">npm package name</span>
@@ -288,61 +395,15 @@ export default function InstantScanPage() {
                 />
               </label>
             </div>
-
-            <div className="scan-cards-row mt-5">
-              <Card variant="orange" className="p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Instant Scan</h3>
-                  <span className="badge-live">Live</span>
-                </div>
-                <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                  {quota.freeUsed ? "1 USDT - KiteAI Testnet" : "Your first scan is free"}
-                </p>
-                <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                  Run KiteBond&apos;s full safe npm analysis with registry intelligence, dependency signals, script-risk checks,
-                  safe tarball inspection, and Heurist-powered security reasoning.
-                </p>
-                <ul className="mt-4 space-y-1 text-xs text-[var(--text-muted)]">
-                  <li>- Registry metadata and version checks</li>
-                  <li>- Maintainer, repository, and license signals</li>
-                  <li>- Dependency and typosquat risk analysis</li>
-                  <li>- Lifecycle script and keyword detection</li>
-                  <li>- Safe tarball/file-name inspection</li>
-                  <li>- Heurist-powered evidence report</li>
-                </ul>
-                <button
-                  type="button"
-                  onClick={runScan}
-                  disabled={busy}
-                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
-                >
-                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                  {busy ? "Scan in progress" : "Run Instant Scan"}
-                </button>
-              </Card>
-
-              <Card className="scan-card-locked p-5">
-                <div className="relative z-[2] flex items-center justify-between gap-3">
-                  <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Deep Scan</h3>
-                  <span className="badge-soon">Coming Soon</span>
-                </div>
-                <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">Locked</p>
-                <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">
-                  Future runtime analysis for high-risk packages using isolated sandbox workers, behavior tracing,
-                  and verification tests.
-                </p>
-                <ul className="relative z-[2] mt-4 space-y-1">
-                  <li className="scan-bullet-locked">Isolated dynamic sandbox</li>
-                  <li className="scan-bullet-locked">Behavior tracing</li>
-                  <li className="scan-bullet-locked">Runtime package monitoring</li>
-                  <li className="scan-bullet-locked">Defensive verification tests</li>
-                  <li className="scan-bullet-locked">Execution proof</li>
-                </ul>
-                <button type="button" disabled className="btn-scan-locked relative z-[2] mt-5">
-                  Locked - Coming Soon
-                </button>
-              </Card>
-            </div>
+            <button
+              type="button"
+              onClick={runScan}
+              disabled={busy}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 font-semibold text-black transition hover:bg-[var(--orange-bright)] disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+              {busy ? "Scan in progress" : "Run Instant Scan"}
+            </button>
 
             {!isCorrectNetwork && (
               <div className="mt-5 rounded-[var(--radius-md)] border border-[var(--border-red)] bg-[var(--red-dim)] p-4 text-sm text-[var(--red)]">
@@ -544,7 +605,9 @@ export default function InstantScanPage() {
             </Card>
           )}
         </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </AppShell>
   );
 }

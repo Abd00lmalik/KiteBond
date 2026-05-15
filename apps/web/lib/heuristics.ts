@@ -1,5 +1,5 @@
 import type { NpmPackageMeta } from "./npm";
-import { KNOWN_INCIDENTS } from "./knownIncidents";
+import { KNOWN_INCIDENTS, isIncidentVersionAffected } from "./knownIncidents";
 
 export type Severity = "clean" | "low" | "medium" | "high" | "critical";
 
@@ -79,10 +79,13 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
   const incident = KNOWN_INCIDENTS[meta.name.toLowerCase()];
 
   if (incident) {
+    const affected = isIncidentVersionAffected(meta.version, incident);
+    const incidentSeverity: Severity =
+      affected ? "critical" : incident.incidentType === "historical_vulnerability" ? "low" : incident.historicalScore >= 70 ? "high" : "medium";
     signals.push({
       type: "metadata_signal",
-      severity: incident.severity,
-      evidence: `${incident.summary}${incident.affectedVersions ? ` Affected: ${incident.affectedVersions}.` : ""} ${incident.recommendation}`,
+      severity: incidentSeverity,
+      evidence: `${incident.summary}${incident.affectedVersions?.length ? ` Affected: ${incident.affectedVersions.join(", ")}.` : ""} ${incident.recommendation}`,
       recommendation: incident.recommendation
     });
   }
