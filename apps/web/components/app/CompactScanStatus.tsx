@@ -10,7 +10,7 @@ export type CompactStepKey = "auth" | "resolve" | "analyze" | "report";
 const legacySteps = [
   {
     id: "payment",
-    label: "Auth",
+    label: "Payment",
     activeStates: ["awaiting_usdt_approval", "approval_confirming", "awaiting_scan_authorization", "authorization_confirming"] as ScanState[]
   },
   { id: "resolve", label: "Resolve", activeStates: ["resolving_package"] as ScanState[] },
@@ -18,7 +18,7 @@ const legacySteps = [
   { id: "signals", label: "Signals", activeStates: ["computing_signals"] as ScanState[] },
   { id: "heurist", label: "Heurist", activeStates: ["heurist_analysis"] as ScanState[] },
   { id: "report", label: "Report", activeStates: ["building_report"] as ScanState[] },
-  { id: "receipt", label: "Receipt", activeStates: ["recording_receipt"] as ScanState[] }
+  { id: "receipt", label: "Saved", activeStates: ["recording_receipt"] as ScanState[] }
 ];
 
 const legacyStateOrder: ScanState[] = [
@@ -42,21 +42,21 @@ const legacyLabels: Partial<Record<ScanState, string>> = {
   checking_wallet: "Checking wallet...",
   checking_network: "Checking network...",
   checking_free_or_price: "Checking scan eligibility...",
-  awaiting_usdt_approval: "Waiting for USDT approval...",
-  approval_confirming: "Confirming approval...",
-  awaiting_scan_authorization: "Waiting for authorization...",
-  authorization_confirming: "Confirming authorization...",
+  awaiting_usdt_approval: "Waiting for 1 USDT scan fee transfer...",
+  approval_confirming: "Confirming scan fee payment...",
+  awaiting_scan_authorization: "Payment confirmed...",
+  authorization_confirming: "Preparing scan...",
   resolving_package: "Resolving package...",
   inspecting_metadata: "Inspecting metadata...",
   computing_signals: "Computing risk signals...",
   heurist_analysis: "Heurist AI analyzing...",
   building_report: "Building report...",
-  recording_receipt: "Recording scan receipt...",
+  recording_receipt: "Saving scan...",
   completed: "Scan complete."
 };
 
 const stageSteps = [
-  { key: "auth", label: "Authorization", active: "authorizing" },
+  { key: "auth", label: "Payment", active: "authorizing" },
   { key: "resolve", label: "Resolve Package", active: "resolving" },
   { key: "analyze", label: "Heurist Analysis", active: "analyzing" },
   { key: "report", label: "Report", active: "anchoring" }
@@ -142,7 +142,7 @@ function StageScanStatus({ stage, error, failedStep }: { stage: CompactStage; er
 
   const labelMap: Record<CompactStage, string> = {
     idle: "",
-    authorizing: "Authorizing scan...",
+    authorizing: "Checking scan payment...",
     resolving: "Resolving npm package...",
     analyzing: "Heurist analysis running...",
     anchoring: "Building report...",

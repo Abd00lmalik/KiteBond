@@ -118,7 +118,7 @@ export function scanReducer(context: ScanStateContext, transition: ScanTransitio
     case "APPROVAL_SIGNED":
       return { ...context, paymentTxHash: transition.payload?.txHash || context.paymentTxHash, state: "approval_confirming" };
     case "APPROVAL_CONFIRMED":
-      return { ...context, paymentTxHash: transition.payload?.txHash || context.paymentTxHash, state: "awaiting_scan_authorization" };
+      return { ...context, paymentTxHash: transition.payload?.txHash || context.paymentTxHash, state: "resolving_package" };
     case "AUTH_SIGNED":
       return { ...context, authTxHash: transition.payload?.txHash || context.authTxHash, state: "authorization_confirming" };
     case "AUTH_CONFIRMED":

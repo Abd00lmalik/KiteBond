@@ -4,7 +4,7 @@ import { useEffect, useReducer, useState } from "react";
 import CountUp from "react-countup";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Copy, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
@@ -13,10 +13,9 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
 import { PageGlow } from "@/components/shared/PageGlow";
-import { TxLink } from "@/components/shared/TxLink";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
-import { useApproveToken, useAuthorizeScan, useRecordScanReceipt } from "@/hooks/useKiteBond";
-import { areContractsConfigured, getMissingContractConfig, getScanPaymentsAddress } from "@/lib/contractConfig";
+import { useTransferScanFee } from "@/hooks/useKiteBond";
+import { areContractsConfigured, getMissingContractConfig, getProtocolTreasuryAddress } from "@/lib/contractConfig";
 import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { initialScanState, isScanBusy, scanReducer, type ScanReport } from "@/lib/scanStateMachine";
 import type { Severity } from "@/lib/heuristics";
@@ -45,9 +44,7 @@ const riskColors: Record<Severity, { bg: string; border: string; text: string }>
 export default function InstantScanPage() {
   const { address, isConnected } = useAccount();
   const { isCorrectNetwork, switchToKite, isSwitching } = useNetworkGuard();
-  const { approve, isApproving } = useApproveToken();
-  const { authorizeScan, isAuthorizing } = useAuthorizeScan();
-  const { recordReceipt, isRecordingReceipt } = useRecordScanReceipt();
+  const { transferScanFee, isTransferringScanFee } = useTransferScanFee();
   const [packageName, setPackageName] = useState("lodash");
   const [version, setVersion] = useState("latest");
   const [mode, setMode] = useState<"select" | "instant">("select");
@@ -59,12 +56,12 @@ export default function InstantScanPage() {
     freeScansUsed: 0
   });
 
-  const busy = isScanBusy(context.state) || isApproving || isAuthorizing || isRecordingReceipt;
+  const busy = isScanBusy(context.state) || isTransferringScanFee;
   const contractsReady = areContractsConfigured();
   const missingContracts = getMissingContractConfig();
-  const scanSpender = (() => {
+  const scanTreasury = (() => {
     try {
-      return getScanPaymentsAddress();
+      return getProtocolTreasuryAddress();
     } catch {
       return null;
     }
@@ -151,26 +148,15 @@ export default function InstantScanPage() {
     }
 
     try {
-      let authTxHash: `0x${string}` | undefined;
-      const packageHash = ethers.keccak256(ethers.toUtf8Bytes(pkg)) as `0x${string}`;
-      const versionHash = ethers.keccak256(ethers.toUtf8Bytes(resolvedVersion)) as `0x${string}`;
+      let paymentTxHash: `0x${string}` | undefined;
       let onchainScanId = ethers.keccak256(ethers.toUtf8Bytes(`${address || "anonymous"}:${pkg}:${resolvedVersion}:${Date.now()}`)) as `0x${string}`;
 
       if (!isFree) {
         dispatch({ type: "WALLET_OK" });
         dispatch({ type: "NETWORK_OK" });
         dispatch({ type: "APPROVAL_SIGNED" });
-        const approveTxHash = await approve({ spender: getScanPaymentsAddress(), amount: price });
-        dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: approveTxHash } });
-
-        dispatch({ type: "AUTH_SIGNED" });
-        authTxHash = await authorizeScan({
-          packageNameHash: packageHash,
-          versionHash,
-          depth: "instant",
-          scanId: onchainScanId
-        });
-        dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
+        paymentTxHash = await transferScanFee();
+        dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: paymentTxHash } });
       }
 
       setStage("resolving");
@@ -182,7 +168,7 @@ export default function InstantScanPage() {
           version: resolvedVersion,
           address,
           walletAddress: address,
-          paymentTxHash: authTxHash,
+          paymentTxHash,
           onchainScanId,
           scanType: "instant"
         })
@@ -222,25 +208,6 @@ export default function InstantScanPage() {
       dispatch({ type: "ERROR", payload: { error: message } });
       setStage("error");
       setFailedStep(getFailedStep(error));
-      toast.error(message);
-    }
-  }
-
-  async function saveReceipt() {
-    if (!context.onchainScanId || !context.reportHash || !context.scanId) return;
-    try {
-      dispatch({ type: "RECORDING_RECEIPT" });
-      const txHash = await recordReceipt({ scanId: context.onchainScanId, reportHash: context.reportHash });
-      await safeFetch<{ success?: boolean }>("/api/scan/anchor-proof", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scanId: context.scanId, reportHash: context.reportHash, txHash })
-      });
-      dispatch({ type: "RECEIPT_RECORDED", payload: { txHash } });
-      toast.success("Scan receipt recorded.");
-    } catch (error) {
-      const message = getErrorMessage(error);
-      dispatch({ type: "ERROR", payload: { error: message } });
       toast.error(message);
     }
   }
@@ -445,16 +412,16 @@ export default function InstantScanPage() {
               </div>
             )}
 
-            {scanSpender && (
+            {scanTreasury && (
               <div className="mt-4 text-xs text-[var(--text-secondary)]">
-                <span className="font-mono">Approving USDT spend for: </span>
+                <span className="font-mono">Paid scan treasury: </span>
                 <a
-                  href={`https://testnet.kitescan.ai/address/${scanSpender}`}
+                  href={`https://testnet.kitescan.ai/address/${scanTreasury}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-mono text-[var(--blue)]"
                 >
-                  {scanSpender.slice(0, 8)}...{scanSpender.slice(-6)}
+                  {scanTreasury.slice(0, 8)}...{scanTreasury.slice(-6)}
                 </a>
               </div>
             )}
@@ -487,36 +454,6 @@ export default function InstantScanPage() {
               </div>
 
               <ReportSlideshow report={result.report} />
-
-              <Card variant="glass" className="mt-8 p-5 border-t border-[var(--border-dim)]">
-                <p className="label-sm label-orange">On-chain scan receipt</p>
-                <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                  Only the report hash and payment reference are stored on Kite. The full report stays readable in the app.
-                  Anyone can verify the report was not altered after it was generated.
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                  <span className="hash">Report hash: {result.reportHash.slice(0, 10)}...{result.reportHash.slice(-8)}</span>
-                  <button
-                    type="button"
-                    onClick={() => result.reportHash && navigator.clipboard.writeText(result.reportHash)}
-                    className="inline-flex items-center gap-1 text-[var(--orange)]"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Copy
-                  </button>
-                  {context.receiptTxHash ? (
-                    <TxLink hash={context.receiptTxHash} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={saveReceipt}
-                      disabled={isRecordingReceipt}
-                      className="rounded-[var(--radius-md)] bg-[var(--orange)] px-3 py-2 font-semibold text-black disabled:opacity-60"
-                    >
-                      {isRecordingReceipt ? "Recording..." : "Save Report Hash on Kite"}
-                    </button>
-                  )}
-                </div>
-              </Card>
 
               <Link
                 href={`/app/agent-hunt?package=${encodeURIComponent(result.report.packageName)}&version=${encodeURIComponent(result.report.version)}`}

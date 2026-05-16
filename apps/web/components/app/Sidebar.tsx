@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, FileSearch, Home, ListChecks, Radar, Rocket, ScrollText, Shield } from "lucide-react";
+import { Archive, FileSearch, Home, ListChecks, Radar, Rocket, ScrollText, UserRound } from "lucide-react";
+import { useAccount } from "wagmi";
 import { WalletPanel } from "./WalletPanel";
 
 const nav = [
@@ -10,13 +11,14 @@ const nav = [
   { href: "/app/instant-scan", label: "Instant Scan", icon: FileSearch },
   { href: "/app/agent-hunt", label: "Agent Hunt", icon: Radar },
   { href: "/app/hunts", label: "Open Hunts", icon: ListChecks },
+  { href: "/app/my-hunts", label: "My Hunts", icon: UserRound, walletOnly: true },
   { href: "/app/scans", label: "Scan History", icon: Archive },
-  { href: "/app/proofs", label: "Proof Archive", icon: Shield },
   { href: "/app/skill", label: "Skill Docs", icon: ScrollText }
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { isConnected } = useAccount();
 
   return (
     <div className="sidebar flex h-full w-full shrink-0 flex-col p-4">
@@ -27,8 +29,11 @@ export function Sidebar() {
         <span>KiteBond</span>
       </Link>
       <nav className="space-y-1">
-        {nav.map((item) => {
-          const active = pathname === item.href || (item.href === "/app/hunts" && pathname.startsWith("/app/hunts/"));
+        {nav.filter((item) => !item.walletOnly || isConnected).map((item) => {
+          const active =
+            pathname === item.href ||
+            (item.href === "/app/hunts" && pathname.startsWith("/app/hunts/")) ||
+            (item.href === "/app/my-hunts" && pathname.startsWith("/app/my-hunts/"));
           return (
             <Link
               key={item.href}

@@ -13,6 +13,8 @@ const ENV = {
 
 type EnvKey = keyof typeof ENV;
 
+export const SCAN_FEE_TREASURY_ADDRESS = "0x25265b9dBEb6c653b0CA281110Bb0697a9685107" as const;
+
 function requireEnv(key: EnvKey): string {
   const val = ENV[key];
   if (!val || val.trim() === "" || val.includes("undefined")) {
@@ -39,7 +41,7 @@ export const CONTRACT_CONFIG = {
   kitebond: requireEnv("NEXT_PUBLIC_KITEBOND_CONTRACT") as `0x${string}`,
   scanPayments: requireEnv("NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT") as `0x${string}`,
   paymentToken: requireEnv("NEXT_PUBLIC_PAYMENT_TOKEN") as `0x${string}`,
-  treasury: requireEnv("NEXT_PUBLIC_PROTOCOL_TREASURY") as `0x${string}`,
+  treasury: SCAN_FEE_TREASURY_ADDRESS,
   chainId: Number(requireEnv("NEXT_PUBLIC_KITE_CHAIN_ID")) || 2368,
   rpcUrl: requireEnv("NEXT_PUBLIC_KITE_RPC_URL"),
   explorerUrl: requireEnv("NEXT_PUBLIC_KITE_EXPLORER"),
@@ -56,6 +58,10 @@ export function getHuntRegistryAddress(): `0x${string}` {
 
 export function getPaymentTokenAddress(): `0x${string}` {
   return CONTRACT_CONFIG.paymentToken;
+}
+
+export function getProtocolTreasuryAddress(): `0x${string}` {
+  return SCAN_FEE_TREASURY_ADDRESS;
 }
 
 export function tryGetScanPaymentsAddress(): `0x${string}` | null {
@@ -76,7 +82,6 @@ export function getMissingContractConfig(): string[] {
     "NEXT_PUBLIC_KITEBOND_CONTRACT",
     "NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT",
     "NEXT_PUBLIC_PAYMENT_TOKEN",
-    "NEXT_PUBLIC_PROTOCOL_TREASURY",
     "NEXT_PUBLIC_KITE_CHAIN_ID",
     "NEXT_PUBLIC_KITE_RPC_URL",
     "NEXT_PUBLIC_KITE_EXPLORER",

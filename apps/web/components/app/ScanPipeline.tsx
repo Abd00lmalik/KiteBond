@@ -37,8 +37,7 @@ const stages = [
   { id: "metadata", label: "Inspecting metadata", states: ["inspecting_metadata"] as ScanState[] },
   { id: "signals", label: "Extracting threat signals", states: ["computing_signals"] as ScanState[] },
   { id: "heurist", label: "Heurist AI analysis", states: ["heurist_analysis"] as ScanState[] },
-  { id: "report", label: "Building report", states: ["building_report"] as ScanState[] },
-  { id: "receipt", label: "Recording scan receipt", states: ["recording_receipt"] as ScanState[] }
+  { id: "report", label: "Building report", states: ["building_report", "recording_receipt"] as ScanState[] }
 ];
 
 function stateIndex(state: ScanState) {
@@ -66,8 +65,6 @@ function stageStatus(stage: (typeof stages)[number], state: ScanState, isFree: b
 function stageCopy(stageId: string, status: StageStatus, isFree: boolean) {
   if (stageId === "payment" && isFree && status === "completed") return "Free scan authorized";
   if (status === "active" && stageId === "payment") return "Awaiting wallet confirmation";
-  if (status === "active" && stageId === "receipt") return "Writing receipt transaction";
-  if (status === "completed" && stageId === "receipt") return "Scan receipt recorded";
   if (status === "failed") return "Stopped";
   return status === "completed" ? "Complete" : "Waiting";
 }
@@ -127,7 +124,7 @@ export function ScanPipeline({
       <div className="mt-5 space-y-0">
         {stages.map((stage, index) => {
           const status = stageStatus(stage, currentState, isFree, failedState);
-          const displayStatus = stage.id === "receipt" && currentState === "completed" && !receiptTxHash ? "pending" : status;
+          const displayStatus = status;
           const connector =
             displayStatus === "completed"
               ? "bg-[var(--green)]"
@@ -166,7 +163,6 @@ export function ScanPipeline({
                 <p className="mt-1 text-xs text-[var(--text-muted)]">{stageCopy(stage.id, displayStatus as StageStatus, isFree)}</p>
                 {stage.id === "payment" && authTxHash && <div className="mt-2"><TxLink hash={authTxHash} /></div>}
                 {stage.id === "payment" && !authTxHash && paymentTxHash && <div className="mt-2"><TxLink hash={paymentTxHash} /></div>}
-                {stage.id === "receipt" && receiptTxHash && <div className="mt-2"><TxLink hash={receiptTxHash} /></div>}
                 {displayStatus === "failed" && error && <p className="mt-2 text-xs text-[var(--red)]">{error}</p>}
               </div>
             </motion.div>

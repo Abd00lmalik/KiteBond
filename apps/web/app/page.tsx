@@ -25,13 +25,13 @@ import { Card } from "@/components/shared/Card";
 import { VIEWPORT, revealScaleCyber, revealUpCyber, staggerContainer } from "@/lib/motion";
 
 const heroLines = [
-  { prefix: "$", text: "kitebond scan lodash@4.17.21", tone: "primary", delay: 0 },
+  { prefix: "$", text: "kitebond scan <package>@latest", tone: "primary", delay: 0 },
   { prefix: ">", text: "resolving npm registry metadata...", tone: "muted", delay: 900 },
   { prefix: ">", text: "inspecting 247 dependents", tone: "muted", delay: 1700 },
   { prefix: "!", text: "maintainer: 1 (unverified email)", tone: "amber", delay: 2500 },
   { prefix: ">", text: "Heurist security analysis running...", tone: "muted", delay: 3400 },
-  { prefix: "OK", text: "report hash: 0x7f3a...c2d1", tone: "green", delay: 5200 },
-  { prefix: "OK", text: "Kite receipt: 0x2b8f... [KiteAI Testnet]", tone: "green", delay: 6000 }
+  { prefix: "OK", text: "risk briefing generated", tone: "green", delay: 5200 },
+  { prefix: "OK", text: "findings ready for review", tone: "green", delay: 6000 }
 ];
 
 const heroContainer = {
@@ -54,7 +54,7 @@ const threats = [
 const kiteTiles = [
   { icon: BadgeDollarSign, title: "On-chain payments", text: "Test USDT. Transparent, verifiable payments." },
   { icon: LockKeyhole, title: "Agent staking", text: "No free submissions. Agents risk real collateral." },
-  { icon: ReceiptText, title: "Proof hashes", text: "Every report and receipt is hashed and recorded." },
+  { icon: ReceiptText, title: "Evidence trails", text: "Reports preserve readable findings, signals, and package evidence." },
   { icon: Scale, title: "Enforced settlement", text: "Winners paid. Invalid reports slashed. No exceptions." }
 ];
 
@@ -274,8 +274,8 @@ function TwoPathsSection() {
               variant="orange"
               icon={<FileSearch className="h-7 w-7" />}
               title="Instant Scan"
-              text="Scan any npm package by name in seconds. Heurist AI analyzes metadata, signals, and risk. Report hash recorded on Kite."
-              features={["First scan free", "1 USDT after free scan", "On-chain receipt"]}
+              text="Scan any npm package by name in seconds. Heurist AI analyzes metadata, signals, and risk before package code executes."
+              features={["First scan free", "1 USDT after free scan", "Static pre-install analysis"]}
               href="/app/instant-scan"
               cta="Try Instant Scan"
             />

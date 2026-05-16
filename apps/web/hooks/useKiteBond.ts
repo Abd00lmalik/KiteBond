@@ -11,6 +11,7 @@ import {
 import {
   getHuntRegistryAddress,
   getPaymentTokenAddress,
+  getProtocolTreasuryAddress,
   getScanPaymentsAddress,
   tryGetScanPaymentsAddress
 } from "@/lib/contractConfig";
@@ -77,6 +78,32 @@ export function useAuthorizeScan() {
   );
 
   return { authorizeScan, isAuthorizing: isPending };
+}
+
+export function useTransferScanFee() {
+  const { writeContractAsync, isPending } = useWriteContract();
+  const publicClient = usePublicClient();
+
+  const transferScanFee = useCallback(
+    async () => {
+      if (!publicClient) throw new Error("Wallet client is not ready");
+      const treasury = getProtocolTreasuryAddress();
+      if (!isAddress(treasury) || treasury === zeroAddress) {
+        throw new Error(`Invalid treasury address: ${treasury}`);
+      }
+      const hash = await writeContractAsync({
+        address: getPaymentTokenAddress(),
+        abi: ERC20ABI,
+        functionName: "transfer",
+        args: [treasury, 1_000_000n]
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      return hash;
+    },
+    [publicClient, writeContractAsync]
+  );
+
+  return { transferScanFee, isTransferringScanFee: isPending };
 }
 
 export function useAnchorScanProof() {
