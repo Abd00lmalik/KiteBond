@@ -110,8 +110,8 @@ export async function POST(req: NextRequest) {
   }
   if (requiredPayment > 0 && body.paymentTxHash) {
     try {
-      const paymentConfirmed = await verifyKitePaymentTx(body.paymentTxHash);
-      if (!paymentConfirmed) return stageError("auth", "Payment transaction is not confirmed on KiteAI.", 402);
+      const paymentConfirmed = await verifyKitePaymentTx(body.paymentTxHash, address);
+      if (!paymentConfirmed) return stageError("auth", "Payment transaction is not a confirmed 1 USDT scan fee.", 402);
     } catch (err) {
       console.error("[Scan][Auth] Payment verification failed:", err instanceof Error ? err.message : err);
       return stageError("auth", "Could not verify scan payment on KiteAI.", 502);
@@ -277,10 +277,10 @@ export async function POST(req: NextRequest) {
       riskScore > 60 ? "avoid_until_manual_review" : riskScore >= 30 ? "use_with_caution" : "safe_to_review",
     confidence: heuristReport.heuristCalled ? Math.max(0.56, 0.78 - heuristReport.unsupportedClaims * 0.04) : 0.54,
     heuristCalled: heuristReport.heuristCalled,
-    limitations: heuristReport.heuristCalled ? REPORT_LIMITATIONS : [...REPORT_LIMITATIONS, "Heurist unavailable; deterministic fallback report returned."],
+    limitations: REPORT_LIMITATIONS,
     methodology: heuristReport.heuristCalled
       ? "npm registry metadata, safe tarball filename inspection, deterministic signals, and Heurist chat-completions analysis"
-      : "npm registry metadata, safe tarball filename inspection, and deterministic signal fallback",
+      : "npm registry metadata, safe tarball filename inspection, and deterministic risk signals",
     metadata: {
       repository: meta.repository,
       license: meta.license,

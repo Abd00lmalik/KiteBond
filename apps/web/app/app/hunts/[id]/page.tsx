@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { CheckCircle2, Copy, Loader2, Shield, Trophy } from "lucide-react";
+import { CheckCircle2, Loader2, Shield, Trophy } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
 import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
+import { FindingsRenderer } from "@/components/hunts/FindingsRenderer";
 import { useHuntPreflight } from "@/hooks/useHuntPreflight";
 import { useApproveToken, useStakeAndJoin, useSubmitReportOnChain } from "@/hooks/useKiteBond";
 import { getHuntRegistryAddress, getMissingContractConfig } from "@/lib/contractConfig";
@@ -300,11 +301,10 @@ export default function HuntDetailPage() {
                 </div>
                 <span className="rounded-full border border-[var(--border-default)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">{submission.status}</span>
               </div>
+              <div className="mt-4">
+                <FindingsRenderer reportJson={submission.reportJson} />
+              </div>
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                {submission.reportHash && <span className="address">{truncateHash(submission.reportHash, 10, 8)}</span>}
-                <button type="button" onClick={() => submission.reportHash && navigator.clipboard.writeText(submission.reportHash)} className="inline-flex items-center gap-1 text-brand-orange">
-                  <Copy className="h-3.5 w-3.5" /> Copy hash
-                </button>
                 {submission.verificationTx && <TxLink hash={submission.verificationTx} />}
                 {submission.settlementTx && <TxLink hash={submission.settlementTx} />}
               </div>

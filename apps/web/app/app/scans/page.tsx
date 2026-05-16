@@ -6,9 +6,8 @@ import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
 import { PageGlow } from "@/components/shared/PageGlow";
 import { RiskBadge } from "@/components/app/RiskBadge";
-import { TxLink } from "@/components/shared/TxLink";
 import { safeFetch } from "@/lib/safeFetch";
-import { formatUsdt, truncateHash } from "@/lib/utils";
+import { formatUsdt } from "@/lib/utils";
 
 type Scan = {
   id: string;
@@ -17,8 +16,6 @@ type Scan = {
   scanDepth: string;
   amountPaid: string | null;
   paymentTx: string | null;
-  proofTx: string | null;
-  reportHash: string | null;
   riskScore: number | null;
   riskLevel: string | null;
   createdAt: string;
@@ -46,7 +43,7 @@ export default function ScanHistoryPage() {
 
       <div className="grid gap-4">
         {scans.map((scan) => (
-          <Link key={scan.id} href={`/proof/${scan.id}`} className="card p-5 transition hover:border-[var(--border-orange)]">
+          <div key={scan.id} className="card p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xl font-semibold text-[var(--text-primary)]">{scan.packageName}@{scan.version}</p>
@@ -55,12 +52,10 @@ export default function ScanHistoryPage() {
               </div>
               <div className="text-right">
                 {scan.riskLevel && <RiskBadge level={scan.riskLevel} />}
-                <div className="mt-3 flex justify-end gap-3">
-                  {scan.proofTx ? <TxLink hash={scan.proofTx} /> : <span className="address text-xs text-[var(--text-muted)]">{truncateHash(scan.reportHash, 8, 6)}</span>}
-                </div>
+                {scan.riskScore !== null && <p className="mt-3 text-xs text-[var(--text-muted)]">Risk score {scan.riskScore}</p>}
               </div>
             </div>
-          </Link>
+          </div>
         ))}
         {scans.length === 0 && (
           <div className="card p-8 text-center">

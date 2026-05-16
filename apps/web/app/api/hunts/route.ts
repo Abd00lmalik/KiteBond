@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const status = req.nextUrl.searchParams.get("status");
-    const creator = req.nextUrl.searchParams.get("creator");
+    const creator = req.nextUrl.searchParams.get("creator")?.trim().toLowerCase();
     const statusFilter = status && status !== "All"
       ? Array.from(new Set([status, status.toLowerCase(), status.charAt(0).toUpperCase() + status.slice(1)]))
       : null;
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const hunts = await prisma.hunt.findMany({
       where: {
         ...(statusFilter ? { status: { in: statusFilter } } : {}),
-        ...(creator ? { creatorAddress: creator } : {})
+        ...(creator ? { creatorAddress: { equals: creator, mode: "insensitive" } } : {})
       },
       include: { submissions: true },
       orderBy: { createdAt: "desc" },
@@ -79,9 +79,7 @@ export async function POST(req: NextRequest) {
     let hunt;
     try {
       if (resolvedOnChainId !== null) {
-        hunt = await prisma.hunt.upsert({
-          where: { onChainId: resolvedOnChainId },
-          update: {
+        const data = {
             chainId: 2368,
             chainHuntId: resolvedOnChainId,
             creatorAddress,
@@ -97,26 +95,18 @@ export async function POST(req: NextRequest) {
             createdTx: txHash,
             txHash,
             status: "Open"
-          },
-          create: {
-            chainId: 2368,
-            chainHuntId: resolvedOnChainId,
-            onChainId: resolvedOnChainId,
-            creatorAddress,
-            packageName: body.packageName!,
-            version: body.version!,
-            scanDepth: body.scanDepth || "instant",
-            rewardAmount,
-            stakeRequired,
-            stakeAmount: stakeRequired,
-            deadline: new Date(deadline),
-            termsHash: body.termsHash,
-            metadataHash: body.metadataHash,
-            createdTx: txHash,
-            txHash,
-            status: "Open"
-          }
-        });
+          };
+        const existingByTx = await prisma.hunt.findUnique({ where: { txHash } });
+        hunt = existingByTx
+          ? await prisma.hunt.update({ where: { id: existingByTx.id }, data: { ...data, onChainId: resolvedOnChainId } })
+          : await prisma.hunt.upsert({
+              where: { onChainId: resolvedOnChainId },
+              update: data,
+              create: {
+                ...data,
+                onChainId: resolvedOnChainId
+              }
+            });
       } else {
         const existingByTx = await prisma.hunt.findUnique({ where: { txHash } });
         if (existingByTx) {

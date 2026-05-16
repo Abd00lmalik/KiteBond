@@ -22,19 +22,19 @@ const HOW_IT_WORKS_STEPS = [
     step: "03",
     icon: "⚡",
     title: "Run Instant Scan",
-    body: "Free scans available. Paid scans are authorized via a small USDT payment anchored to your wallet on KiteAI."
+    body: "Use the live, fast static scanner for safe pre-install npm analysis. KiteBond inspects metadata, lifecycle scripts, dependencies, package files, known incident matches, and Heurist forensic reasoning without executing package code."
   },
   {
     step: "04",
     icon: "🤖",
-    title: "Heurist Analyzes",
-    body: "A bonded Heurist AI agent inspects the package - metadata, signals, typosquat risk, dependency anomalies, maintainer patterns."
+    title: "Deep Scan Preview",
+    body: "The locked Deep Scan track adds isolated runtime sandboxing, behavior tracing, live execution verification tests, execution proofs, and full dynamic analysis beyond static signals."
   },
   {
     step: "05",
     icon: "📋",
     title: "Report Generated",
-    body: "A structured security report is returned: severity rating, risk score, detailed flags, and an on-chain proof hash."
+    body: "A structured security report is returned with severity rating, risk score, detailed findings, evidence, and recommended next steps."
   },
   {
     step: "06",

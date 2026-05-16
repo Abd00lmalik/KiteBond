@@ -4,7 +4,7 @@ import { useEffect, useReducer, useState } from "react";
 import CountUp from "react-countup";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Copy, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Lock, ReceiptText, ShieldCheck } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { AppShell } from "@/components/app/AppShell";
@@ -13,10 +13,9 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/shared/Badge";
 import { Card } from "@/components/shared/Card";
 import { PageGlow } from "@/components/shared/PageGlow";
-import { TxLink } from "@/components/shared/TxLink";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
-import { useApproveToken, useAuthorizeScan, useRecordScanReceipt } from "@/hooks/useKiteBond";
-import { areContractsConfigured, getMissingContractConfig, getScanPaymentsAddress } from "@/lib/contractConfig";
+import { useTransferScanFee } from "@/hooks/useKiteBond";
+import { areContractsConfigured, getMissingContractConfig } from "@/lib/contractConfig";
 import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { initialScanState, isScanBusy, scanReducer, type ScanReport } from "@/lib/scanStateMachine";
 import type { Severity } from "@/lib/heuristics";
@@ -34,7 +33,7 @@ type ScanResult = {
 
 const INSTANT_PRICE_USDT = "1";
 
-const riskColors: Record<Severity, { bg: string; border: string; text: string }> = {
+const severityStyles: Record<Severity, { bg: string; border: string; text: string }> = {
   clean: { bg: "rgba(0,180,255,0.08)", border: "rgba(0,180,255,0.25)", text: "#00b4ff" },
   low: { bg: "rgba(34,197,94,0.08)", border: "rgba(34,197,94,0.25)", text: "#22c55e" },
   medium: { bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.25)", text: "#f59e0b" },
@@ -45,10 +44,8 @@ const riskColors: Record<Severity, { bg: string; border: string; text: string }>
 export default function InstantScanPage() {
   const { address, isConnected } = useAccount();
   const { isCorrectNetwork, switchToKite, isSwitching } = useNetworkGuard();
-  const { approve, isApproving } = useApproveToken();
-  const { authorizeScan, isAuthorizing } = useAuthorizeScan();
-  const { recordReceipt, isRecordingReceipt } = useRecordScanReceipt();
-  const [packageName, setPackageName] = useState("lodash");
+  const { transferScanFee, isTransferringScanFee } = useTransferScanFee();
+  const [packageName, setPackageName] = useState("");
   const [version, setVersion] = useState("latest");
   const [mode, setMode] = useState<"select" | "instant">("select");
   const [context, dispatch] = useReducer(scanReducer, initialScanState);
@@ -59,16 +56,9 @@ export default function InstantScanPage() {
     freeScansUsed: 0
   });
 
-  const busy = isScanBusy(context.state) || isApproving || isAuthorizing || isRecordingReceipt;
+  const busy = isScanBusy(context.state) || isTransferringScanFee;
   const contractsReady = areContractsConfigured();
   const missingContracts = getMissingContractConfig();
-  const scanSpender = (() => {
-    try {
-      return getScanPaymentsAddress();
-    } catch {
-      return null;
-    }
-  })();
 
   const result = context.report
     ? {
@@ -76,27 +66,6 @@ export default function InstantScanPage() {
         reportHash: context.reportHash,
         scanId: context.scanId,
         onchainScanId: context.onchainScanId
-      }
-    : null;
-
-  const severityWeight: Record<Severity, number> = {
-    critical: 5,
-    high: 4,
-    medium: 3,
-    low: 2,
-    clean: 1
-  };
-  const topReasons = result?.report
-    ? [...result.report.signals]
-        .sort((a, b) => severityWeight[b.severity] - severityWeight[a.severity])
-        .slice(0, 5)
-    : [];
-  const groupedSignals = result?.report
-    ? {
-        incidents: result.report.signals.filter((signal) => /KNOWN_INCIDENT/i.test(signal.evidence)),
-        metadata: result.report.signals.filter((signal) => signal.type === "metadata_signal" || signal.type === "maintainer_signal" || signal.type === "repository_signal"),
-        scripts: result.report.signals.filter((signal) => signal.type === "install_script"),
-        dependencyAndFiles: result.report.signals.filter((signal) => signal.type === "dependency_risk" || signal.type === "tarball_signal" || signal.type === "typosquat")
       }
     : null;
 
@@ -172,26 +141,15 @@ export default function InstantScanPage() {
     }
 
     try {
-      let authTxHash: `0x${string}` | undefined;
-      const packageHash = ethers.keccak256(ethers.toUtf8Bytes(pkg)) as `0x${string}`;
-      const versionHash = ethers.keccak256(ethers.toUtf8Bytes(resolvedVersion)) as `0x${string}`;
+      let paymentTxHash: `0x${string}` | undefined;
       let onchainScanId = ethers.keccak256(ethers.toUtf8Bytes(`${address || "anonymous"}:${pkg}:${resolvedVersion}:${Date.now()}`)) as `0x${string}`;
 
       if (!isFree) {
         dispatch({ type: "WALLET_OK" });
         dispatch({ type: "NETWORK_OK" });
         dispatch({ type: "APPROVAL_SIGNED" });
-        const approveTxHash = await approve({ spender: getScanPaymentsAddress(), amount: price });
-        dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: approveTxHash } });
-
-        dispatch({ type: "AUTH_SIGNED" });
-        authTxHash = await authorizeScan({
-          packageNameHash: packageHash,
-          versionHash,
-          depth: "instant",
-          scanId: onchainScanId
-        });
-        dispatch({ type: "AUTH_CONFIRMED", payload: { txHash: authTxHash } });
+        paymentTxHash = await transferScanFee();
+        dispatch({ type: "APPROVAL_CONFIRMED", payload: { txHash: paymentTxHash } });
       }
 
       setStage("resolving");
@@ -203,7 +161,7 @@ export default function InstantScanPage() {
           version: resolvedVersion,
           address,
           walletAddress: address,
-          paymentTxHash: authTxHash,
+          paymentTxHash,
           onchainScanId,
           scanType: "instant"
         })
@@ -247,25 +205,6 @@ export default function InstantScanPage() {
     }
   }
 
-  async function saveReceipt() {
-    if (!context.onchainScanId || !context.reportHash || !context.scanId) return;
-    try {
-      dispatch({ type: "RECORDING_RECEIPT" });
-      const txHash = await recordReceipt({ scanId: context.onchainScanId, reportHash: context.reportHash });
-      await safeFetch<{ success?: boolean }>("/api/scan/anchor-proof", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scanId: context.scanId, reportHash: context.reportHash, txHash })
-      });
-      dispatch({ type: "RECEIPT_RECORDED", payload: { txHash } });
-      toast.success("Scan receipt recorded.");
-    } catch (error) {
-      const message = getErrorMessage(error);
-      dispatch({ type: "ERROR", payload: { error: message } });
-      toast.error(message);
-    }
-  }
-
   function resetScan() {
     dispatch({ type: "RESET" });
     setStage("idle");
@@ -292,39 +231,31 @@ export default function InstantScanPage() {
             transition={{ duration: 0.45, ease: "easeOut" }}
             className="mx-auto w-full max-w-[980px]"
           >
-            <Card variant="glass" className="mb-5 border-[var(--border-orange)] bg-[linear-gradient(180deg,rgba(12,12,26,0.92),rgba(8,8,18,0.9))] p-7">
-              <p className="label-sm label-orange">Select Scan Mode</p>
-              <h2 className="mt-3 text-[clamp(1.6rem,2.4vw,2.5rem)]">Choose Security Audit Depth</h2>
-              <p className="mt-3 max-w-[74ch] text-sm text-[var(--text-secondary)]">
-                Instant Scan is the live KiteBond product and runs the full safe npm investigation pipeline.
-                Deep Scan previews the upcoming runtime sandbox system and stays locked in this release.
+            <div className="mb-6">
+              <p className="label-sm label-orange">Choose your security audit plan</p>
+              <h2 className="mt-3 text-[clamp(1.7rem,2.6vw,2.55rem)]">Safe npm forensics before install</h2>
+              <p className="mt-3 max-w-[72ch] text-sm text-[var(--text-secondary)]">
+                Pick the live static audit path now, or preview the locked runtime sandbox track coming next.
               </p>
-            </Card>
+            </div>
             <div className="scan-cards-row-premium">
               <motion.div
                 initial={{ opacity: 0, y: 24, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.45, ease: "easeOut" }}
               >
-                <Card variant="green" interactive className="scan-card-premium scan-card-premium-live p-6">
+                <Card variant="orange" interactive className="scan-card-premium scan-card-premium-live p-6">
                   <div className="mb-3 flex items-center justify-between gap-3">
-                    <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Instant Scan</h3>
+                    <h3 className="m-0 text-xl font-semibold text-[var(--text-primary)]">Instant Scan</h3>
                     <span className="badge-live">Live</span>
                   </div>
-                  <p className="scan-price-line">
-                    {quota.freeUsed ? "1 USDT · KiteAI Testnet" : "Your first scan is free"}
-                  </p>
-                  <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                    KiteBond&apos;s full safe npm security audit - registry intelligence, dependency analysis, script-risk
-                    detection, safe file-structure inspection, and Heurist-backed evidence reasoning.
-                  </p>
+                  <p className="scan-price-line">First scan free &middot; then 1 USDT</p>
                   <ul className="scan-feature-list mt-4 space-y-1 text-xs text-[var(--text-muted)]">
-                    <li>Registry metadata and version checks</li>
-                    <li>Maintainer, repository, and license signals</li>
-                    <li>Dependency and typosquat risk analysis</li>
-                    <li>Lifecycle script and malware-pattern detection</li>
-                    <li>Safe tarball and file-structure inspection</li>
-                    <li>Heurist-powered evidence report</li>
+                    <li>Safe pre-install npm analysis</li>
+                    <li>Metadata, scripts, and dependency inspection</li>
+                    <li>Known incident intelligence with version matching</li>
+                    <li>Heurist AI forensic investigation</li>
+                    <li>No package code executed</li>
                   </ul>
                   <button
                     type="button"
@@ -342,24 +273,22 @@ export default function InstantScanPage() {
                 transition={{ duration: 0.45, ease: "easeOut", delay: 0.05 }}
               >
                 <Card className="scan-card-premium scan-card-premium-locked p-6">
+                  <Lock className="scan-card-lock-icon h-8 w-8" />
                   <div className="relative z-[2] mb-3 flex items-center justify-between gap-3">
-                    <h3 className="m-0 text-base font-semibold uppercase text-[var(--text-primary)]">Deep Scan</h3>
+                    <h3 className="m-0 text-xl font-semibold text-[var(--text-primary)]">Deep Scan</h3>
                     <span className="badge-soon">Coming Soon</span>
                   </div>
-                  <p className="scan-price-line relative z-[2]">Locked</p>
-                  <p className="relative z-[2] mt-3 text-sm text-[var(--text-secondary)]">
-                    Future runtime analysis for high-risk packages using isolated sandbox workers, behavioral tracing, runtime monitoring, and defensive verification tests.
-                  </p>
+                  <p className="scan-price-line relative z-[2]">Runtime forensics track</p>
                   <ul className="relative z-[2] mt-4 space-y-1">
-                    <li className="scan-bullet-locked">Isolated dynamic sandbox execution</li>
-                    <li className="scan-bullet-locked">Behavioral trace capture</li>
-                    <li className="scan-bullet-locked">Runtime package monitoring</li>
-                    <li className="scan-bullet-locked">Defensive verification tests</li>
-                    <li className="scan-bullet-locked">Execution proof and attestation</li>
+                    <li className="scan-bullet-locked">Isolated runtime sandbox</li>
+                    <li className="scan-bullet-locked">Behavior tracing and execution monitoring</li>
+                    <li className="scan-bullet-locked">Verification tests</li>
+                    <li className="scan-bullet-locked">Execution proof generation</li>
+                    <li className="scan-bullet-locked">Full dynamic analysis</li>
                   </ul>
                   <button type="button" disabled className="btn-scan-locked relative z-[2] mt-5">
                     <Lock className="mr-2 inline h-3.5 w-3.5" />
-                    Locked - Coming Soon
+                    Coming Soon
                   </button>
                 </Card>
               </motion.div>
@@ -380,7 +309,7 @@ export default function InstantScanPage() {
               <div className="flex items-center gap-3">
                 <span className="badge-live">Instant Scan</span>
                 <p className="text-xs text-[var(--text-secondary)]">
-                  {quota.freeUsed ? "1 USDT · KiteAI Testnet" : "Your first scan is free"}
+                  {quota.freeUsed ? "1 USDT on KiteAI Testnet" : "Your first scan is free"}
                 </p>
               </div>
               <button
@@ -444,19 +373,16 @@ export default function InstantScanPage() {
               </div>
             )}
 
-            {scanSpender && (
-              <div className="mt-4 text-xs text-[var(--text-secondary)]">
-                <span className="font-mono">Approving USDT spend for: </span>
-                <a
-                  href={`https://testnet.kitescan.ai/address/${scanSpender}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-mono text-[var(--blue)]"
-                >
-                  {scanSpender.slice(0, 8)}...{scanSpender.slice(-6)}
-                </a>
-              </div>
-            )}
+            <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4 text-sm">
+              <p className="font-semibold text-[var(--text-primary)]">
+                {quota.freeUsed ? "1 USDT scan fee required" : "Free scan available"}
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                {quota.freeUsed
+                  ? "KiteBond will ask your wallet to send the scan fee before analysis starts. If you reject or the transfer fails, the scan will not run."
+                  : "This connected wallet has one free Instant Scan. KiteBond marks it as used only after the scan starts successfully."}
+              </p>
+            </div>
 
             <CompactScanStatus stage={stage} state={context.state} error={context.error} isFree={context.isFree} failedStep={failedStep} />
           </Card>
@@ -488,134 +414,9 @@ export default function InstantScanPage() {
             </Card>
           )}
 
-          {result?.report && result.reportHash && (
-            <Card variant="green" className="p-6">
-              <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
-                <div>
-                  <p className="label-sm text-[var(--green)]">Report</p>
-                  <h2 className="mt-2 text-3xl package-name">
-                    {result.report.packageName}@{result.report.version}
-                  </h2>
-                </div>
-                <Badge tone={result.report.riskLevel} label={result.report.riskLevel} />
-              </div>
-              <div className="mt-6 grid gap-5 md:grid-cols-[170px_1fr]">
-                <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] p-5 text-center">
-                  <p className="label-sm">Risk Score</p>
-                  <p className="mt-3 text-5xl font-bold text-[var(--text-primary)]">
-                    <CountUp end={result.report.riskScore} duration={1} />
-                  </p>
-                </div>
-                <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-5">
-                  <p className="text-sm text-[var(--text-primary)]">
-                    {buildVerdictLine(result.report.riskLevel, result.report.packageName, result.report.version)}
-                  </p>
-                  <p className="mt-2 text-sm text-[var(--text-secondary)]">{result.report.summary}</p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge tone="verified" label={formatRecommendation(result.report.finalRecommendation)} />
-                    <Badge tone="pending" label={`confidence ${Math.round(result.report.confidence * 100)}%`} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <p className="label-sm text-[var(--green)]">Why this score</p>
-                <div className="mt-3 grid gap-3">
-                  {topReasons.map((reason, index) => (
-                    <Card key={`${reason.type}-${index}`} variant="glass" className="p-4">
-                      <div className="mb-2 flex items-center gap-2">
-                        <Badge tone={reason.severity} label={reason.severity} />
-                      </div>
-                      <p className="text-sm text-[var(--text-primary)]">{reason.evidence}</p>
-                      <p className="mt-2 text-xs text-[var(--text-secondary)]">{reason.recommendation}</p>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4">
-                <EvidenceGroup title="Known Incidents" items={groupedSignals?.incidents ?? []} />
-                <EvidenceGroup title="Metadata & Maintainer Signals" items={groupedSignals?.metadata ?? []} />
-                <EvidenceGroup title="Lifecycle Script Findings" items={groupedSignals?.scripts ?? []} />
-                <EvidenceGroup title="Dependency & File Signals" items={groupedSignals?.dependencyAndFiles ?? []} />
-                <div>
-                  <p className="label-sm text-[var(--green)]">Heurist Investigation Summary</p>
-                  {result.report.findings && result.report.findings.length > 0 ? (
-                    <div className="mt-3 grid gap-3">
-                      {result.report.findings.slice(0, 5).map((finding, index) => (
-                        <Card key={`${finding.claim}-${index}`} variant="glass" className="p-4">
-                          <p className="text-sm text-[var(--text-primary)]">{finding.claim}</p>
-                          <p className="mt-1 text-xs text-[var(--text-secondary)]">{finding.evidenceSource}</p>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <Card variant="glass" className="mt-3 p-4">
-                      <p className="text-sm text-[var(--text-secondary)]">No additional investigative claims were promoted beyond deterministic evidence.</p>
-                    </Card>
-                  )}
-                </div>
-              </div>
-
-              <details className="mt-6 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
-                  Audit Scope
-                </summary>
-                <ul className="mt-3 space-y-1 text-xs text-[var(--text-secondary)]">
-                  {result.report.limitations.map((item, idx) => (
-                    <li key={`${idx}-${item}`}>{item}</li>
-                  ))}
-                </ul>
-              </details>
-
-              <details className="mt-4 rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[rgba(255,255,255,0.02)] p-4">
-                <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">
-                  Technical Details
-                </summary>
-                <div className="mt-3 space-y-3 text-xs text-[var(--text-secondary)]">
-                  <p>AI model: Heurist Llama-3.3-70B (gateway)</p>
-                  <p>Heurist called: {result.report.heuristCalled ? "yes" : "no"}</p>
-                  <p>Methodology: {result.report.methodology}</p>
-                  {result.report.signals.map((signal, index) => (
-                    <div key={`${signal.type}-raw-${index}`} className="rounded-[var(--radius-sm)] border border-[var(--border-dim)] p-2">
-                      <p className="font-mono text-[0.68rem] text-[var(--text-muted)]">
-                        {signal.type} · {signal.evidenceGrade ?? "n/a"} · {signal.severity}
-                      </p>
-                      <p className="mt-1">{signal.evidence}</p>
-                    </div>
-                  ))}
-                </div>
-              </details>
-
-              <Card variant="glass" className="mt-6 p-5">
-                <p className="label-sm label-orange">On-chain scan receipt</p>
-                <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                  Only the report hash and payment reference are stored on Kite. The full report stays readable in the app.
-                  Anyone can verify the report was not altered after it was generated.
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                  <span className="hash">Report hash: {result.reportHash.slice(0, 10)}...{result.reportHash.slice(-8)}</span>
-                  <button
-                    type="button"
-                    onClick={() => result.reportHash && navigator.clipboard.writeText(result.reportHash)}
-                    className="inline-flex items-center gap-1 text-[var(--orange)]"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Copy
-                  </button>
-                  {context.receiptTxHash ? (
-                    <TxLink hash={context.receiptTxHash} />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={saveReceipt}
-                      disabled={isRecordingReceipt}
-                      className="rounded-[var(--radius-md)] bg-[var(--orange)] px-3 py-2 font-semibold text-black disabled:opacity-60"
-                    >
-                      {isRecordingReceipt ? "Recording..." : "Save Report Hash on Kite"}
-                    </button>
-                  )}
-                </div>
-              </Card>
+          {result?.report && (
+            <>
+              <ReportSlideshow report={result.report} />
 
               <Link
                 href={`/app/agent-hunt?package=${encodeURIComponent(result.report.packageName)}&version=${encodeURIComponent(result.report.version)}`}
@@ -630,7 +431,7 @@ export default function InstantScanPage() {
               >
                 Scan Another Package
               </button>
-            </Card>
+            </>
           )}
         </div>
           </motion.div>
@@ -640,42 +441,316 @@ export default function InstantScanPage() {
   );
 }
 
-function EvidenceGroup({
-  title,
-  items
-}: {
-  title: string;
-  items: ScanReport["signals"];
-}) {
+function ReportSlideshow({ report }: { report: ScanReport }) {
+  const [slideIndex, setSlideIndex] = useState(0);
+  const topReasons = [...report.signals].sort((a, b) => severityRank(b.severity) - severityRank(a.severity)).slice(0, 3);
+  const incidentSignals = report.signals.filter(isIncidentSignal);
+  const activeIncidents = incidentSignals.filter((signal) => /active/i.test(signal.evidence));
+  const historicalIncidents = incidentSignals.filter((signal) => !/active/i.test(signal.evidence));
+  const identitySignals = report.signals.filter((signal) =>
+    signal.type === "metadata_signal" || signal.type === "maintainer_signal" || signal.type === "repository_signal" || signal.type === "version_signal"
+  );
+  const scriptSignals = report.signals.filter((signal) => signal.type === "install_script" || signal.type === "tarball_signal");
+  const dependencySignals = report.signals.filter((signal) => signal.type === "dependency_risk" || signal.type === "typosquat");
+  const metadata = report.metadata as ScanReport["metadata"] & {
+    weeklyDownloads?: number;
+    peerDependencyCount?: number;
+    tarballInspection?: { fileCount?: number; inspectedTextFiles?: number; totalSizeKb?: number } | null;
+  };
+  const highRisk = report.riskLevel === "high" || report.riskLevel === "critical";
+  const tone = severityTone(report.riskLevel);
+  const recommendation = formatRecommendation(report.finalRecommendation);
+  const slides = [
+    {
+      title: "Verdict",
+      content: (
+        <div className="grid gap-5 md:grid-cols-[150px_1fr]">
+          <div className="report-score-dial">
+            <p className="label-sm">Risk Score</p>
+            <p className="mt-3 text-5xl font-bold text-[var(--text-primary)]">
+              <CountUp end={report.riskScore} duration={1} />
+            </p>
+            <Badge tone={report.riskLevel} label={prettySeverity(report.riskLevel)} />
+          </div>
+          <div>
+            <p className="package-name text-xl text-[var(--text-primary)]">
+              {report.packageName}@{report.version}
+            </p>
+            <p className="mt-4 text-base text-[var(--text-primary)]">{buildVerdictLine(report.riskLevel, report.packageName, report.version)}</p>
+            <p className="mt-3 text-sm text-[var(--text-secondary)]">{report.summary}</p>
+            <p className="mt-4 text-sm font-semibold text-[var(--text-primary)]">Primary recommendation: {recommendation}.</p>
+          </div>
+        </div>
+      )
+    },
+    {
+      title: "Why This Score",
+      content: (
+        <SignalBriefing
+          items={topReasons}
+          empty="No high-impact signals were promoted; score is driven by clean or low-severity metadata."
+          limit={3}
+        />
+      )
+    },
+    {
+      title: "Known Incident Intelligence",
+      content: (
+        <div className="grid gap-4">
+          <IncidentPanel title="Active affected-version match" items={activeIncidents} empty="No active affected-version match was found for this package version." />
+          <IncidentPanel title="Historical context" items={historicalIncidents} empty="No historical incident context was matched for this package." />
+        </div>
+      )
+    },
+    {
+      title: "Package Identity",
+      content: (
+        <div className="grid gap-4">
+          <div className="report-fact-grid">
+            <Fact label="Maintainers" value={metadata.maintainerCount !== undefined ? String(metadata.maintainerCount) : "Unknown"} />
+            <Fact label="Repository" value={metadata.repository ? "Linked" : "Not linked"} />
+            <Fact label="License" value={metadata.license || "Not specified"} />
+            <Fact label="Published" value={metadata.publishedAt ? new Date(metadata.publishedAt).toLocaleDateString() : "Unknown"} />
+          </div>
+          <SignalBriefing
+            items={identitySignals.slice(0, 3)}
+            empty="Package identity signals are calm: no maintainer, repository, license, or publication issues were promoted."
+            limit={3}
+          />
+        </div>
+      )
+    },
+    {
+      title: "Script & File Signals",
+      content: (
+        <div className="grid gap-4">
+          <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
+            <p className="text-sm text-[var(--text-primary)]">
+              KiteBond inspected lifecycle metadata and package file signals without executing package code.
+            </p>
+            {metadata.tarballInspection && (
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                Static tarball pass: {metadata.tarballInspection.fileCount ?? "unknown"} files, {metadata.tarballInspection.inspectedTextFiles ?? "unknown"} text files inspected.
+              </p>
+            )}
+          </div>
+          <SignalBriefing items={scriptSignals.slice(0, 4)} empty="No lifecycle script or static package-file risk was promoted." limit={4} />
+        </div>
+      )
+    },
+    {
+      title: "Dependency & Typosquat Risk",
+      content: (
+        <div className="grid gap-4">
+          <div className="report-fact-grid">
+            <Fact label="Direct dependencies" value={String(metadata.dependencyCount)} />
+            <Fact label="Peer dependencies" value={metadata.peerDependencyCount !== undefined ? String(metadata.peerDependencyCount) : "Unknown"} />
+            <Fact label="Weekly downloads" value={metadata.weeklyDownloads !== undefined ? metadata.weeklyDownloads.toLocaleString() : "Unknown"} />
+          </div>
+          <SignalBriefing items={dependencySignals.slice(0, 4)} empty="No dependency-surface or naming-similarity risk was promoted." limit={4} />
+        </div>
+      )
+    },
+    {
+      title: "Recommendation",
+      content: (
+        <div>
+          <p className="text-2xl font-semibold text-[var(--text-primary)]">{recommendation}</p>
+          <p className="mt-4 text-sm text-[var(--text-secondary)]">
+            {recommendationCopy(report.riskLevel, report.packageName, report.version)}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Badge tone="pending" label={`confidence ${Math.round(report.confidence * 100)}%`} />
+            <Badge tone={report.riskLevel} label={prettySeverity(report.riskLevel)} />
+          </div>
+          {highRisk && (
+            <Link
+              href={`/app/agent-hunt?package=${encodeURIComponent(report.packageName)}&version=${encodeURIComponent(report.version)}`}
+              className="mt-6 inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--orange)] px-4 py-3 text-sm font-semibold text-black"
+            >
+              Escalate to Agent Hunt <ArrowRight className="h-4 w-4" />
+            </Link>
+          )}
+        </div>
+      )
+    }
+  ];
+  const activeSlide = slides[slideIndex];
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowRight") setSlideIndex((current) => Math.min(slides.length - 1, current + 1));
+      if (event.key === "ArrowLeft") setSlideIndex((current) => Math.max(0, current - 1));
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [slides.length]);
+
   return (
-    <div>
-      <p className="label-sm text-[var(--green)]">{title}</p>
+    <Card className={`report-briefing-card report-briefing-card-${tone} p-0`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-dim)] px-5 py-4">
+        <div>
+          <p className="label-sm label-orange">Forensic briefing</p>
+          <h2 className="mt-1 text-2xl">{activeSlide.title}</h2>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs text-[var(--text-muted)]">{slideIndex + 1} / {slides.length}</span>
+          <Badge tone={report.riskLevel} label={prettySeverity(report.riskLevel)} />
+        </div>
+      </div>
+      <div className="min-h-[360px] p-5">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeSlide.title}
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -18 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+          >
+            {activeSlide.content}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-dim)] px-5 py-4">
+        <div className="flex gap-2">
+          {slides.map((slide, index) => (
+            <button
+              key={slide.title}
+              type="button"
+              onClick={() => setSlideIndex(index)}
+              className={`report-slide-dot ${index === slideIndex ? "active" : ""}`}
+              aria-label={`Open slide ${index + 1}`}
+            />
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setSlideIndex((current) => Math.max(0, current - 1))}
+            disabled={slideIndex === 0}
+            className="report-slide-nav"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Previous
+          </button>
+          <button
+            type="button"
+            onClick={() => setSlideIndex((current) => Math.min(slides.length - 1, current + 1))}
+            disabled={slideIndex === slides.length - 1}
+            className="report-slide-nav report-slide-nav-primary"
+          >
+            Next
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function SignalBriefing({ items, empty, limit }: { items: ScanReport["signals"]; empty: string; limit: number }) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
+        <p className="text-sm text-[var(--text-secondary)]">{empty}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {items.slice(0, limit).map((signal, index) => (
+        <div
+          key={`${signal.evidence}-${index}`}
+          className="rounded-[var(--radius-md)] border p-4"
+          style={{ borderColor: severityStyles[signal.severity].border, background: severityStyles[signal.severity].bg }}
+        >
+          <div className="mb-2 flex items-center gap-2">
+            <Badge tone={signal.severity} label={prettySeverity(signal.severity)} />
+          </div>
+          <p className="text-sm text-[var(--text-primary)]">{stripSource(signal.evidence)}</p>
+          <p className="mt-2 text-xs text-[var(--text-secondary)]">{signal.recommendation}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IncidentPanel({ title, items, empty }: { title: string; items: ScanReport["signals"]; empty: string }) {
+  const links = items.flatMap((item) => extractUrls(item.evidence));
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
+      <p className="text-sm font-semibold text-[var(--text-primary)]">{title}</p>
       {items.length === 0 ? (
-        <Card variant="glass" className="mt-3 p-4">
-          <p className="text-sm text-[var(--text-secondary)]">No material findings were promoted in this section.</p>
-        </Card>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">{empty}</p>
       ) : (
         <div className="mt-3 grid gap-3">
-          {items.map((signal, index) => (
-            <Card
-              key={`${title}-${signal.type}-${index}`}
-              className="p-4"
-              style={{
-                borderColor: riskColors[signal.severity].border,
-                background: riskColors[signal.severity].bg
-              }}
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <Badge tone={signal.severity} label={signal.severity} />
-              </div>
-              <p className="text-sm text-[var(--text-primary)]">{signal.evidence}</p>
-              <p className="mt-2 text-xs text-[var(--text-secondary)]">{signal.recommendation}</p>
-            </Card>
+          {items.map((item, index) => (
+            <div key={`${title}-${index}`}>
+              <Badge tone={item.severity} label={prettySeverity(item.severity)} />
+              <p className="mt-2 text-sm text-[var(--text-primary)]">{stripSource(item.evidence)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {links.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {Array.from(new Set(links)).map((href) => (
+            <a key={href} href={href} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-[var(--orange)] underline">
+              Advisory link
+            </a>
           ))}
         </div>
       )}
     </div>
   );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-glass)] p-4">
+      <p className="label-sm">{label}</p>
+      <p className="mt-2 text-sm text-[var(--text-primary)]">{value}</p>
+    </div>
+  );
+}
+
+function severityRank(level: Severity) {
+  const ranks: Record<Severity, number> = { clean: 0, low: 1, medium: 2, high: 3, critical: 4 };
+  return ranks[level];
+}
+
+function prettySeverity(level: Severity) {
+  if (level === "clean") return "Low risk";
+  return level.charAt(0).toUpperCase() + level.slice(1);
+}
+
+function severityTone(level: Severity) {
+  if (level === "critical" || level === "high") return "urgent";
+  if (level === "medium") return "amber";
+  return "calm";
+}
+
+function isIncidentSignal(signal: ScanReport["signals"][number]) {
+  return /incident|affected|sabotage|compromise|protestware|prototype pollution|malicious maintainer|account hijack/i.test(signal.evidence);
+}
+
+function extractUrls(value: string) {
+  return value.match(/https?:\/\/\S+/g)?.map((url) => url.replace(/[),.]+$/, "")) ?? [];
+}
+
+function stripSource(value: string) {
+  return value.replace(/\s*Source:\s*https?:\/\/\S+/g, "").trim();
+}
+
+function recommendationCopy(level: Severity, packageName: string, version: string) {
+  if (level === "critical" || level === "high") {
+    return `${packageName}@${version} should be escalated for bonded review before production use. Treat installation as blocked until an agent investigation clears the evidence.`;
+  }
+  if (level === "medium") {
+    return `${packageName}@${version} can move forward only with lockfile pinning, provenance checks, and reviewer sign-off.`;
+  }
+  return `${packageName}@${version} is acceptable for normal dependency hygiene: pin versions, monitor advisories, and keep update automation active.`;
 }
 
 function buildVerdictLine(level: Severity, packageName: string, version: string) {
@@ -716,7 +791,7 @@ function getFailedStep(err: unknown): CompactStepKey {
 function getErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 0) return "Network error. Check your connection.";
-    if (err.status === 402) return "Payment required. Approve USDT to continue.";
+    if (err.status === 402) return "Payment required. Send the 1 USDT scan fee to continue.";
     if (err.status === 404) return "Package not found on npm registry.";
     if (err.status === 408 || err.message.toLowerCase().includes("timed out")) {
       return "Analysis timed out. Try again or use Instant Scan.";

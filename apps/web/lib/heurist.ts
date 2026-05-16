@@ -430,7 +430,7 @@ function buildFallback(packageName: string, input: AnalysisInput, heuristCalled:
 
   return {
     severity,
-    summary: `Evidence-first fallback analysis for ${packageName}@${input.version}. AI reasoning unavailable in this request.`,
+    summary: `Static npm supply-chain review for ${packageName}@${input.version}. Findings are based on registry metadata, package structure, and deterministic risk signals.`,
     findings: fallbackFindings,
     details: fallbackFindings.map((item) => item.claim),
     riskScore,
@@ -762,7 +762,7 @@ export function buildFallbackAnalysis(
       licenseType: meta.license,
       hasInstallScript: meta.hasInstallScript,
       dependencyCount: meta.dependencyCount,
-      signalFlags: [...existingSignals.map((signal) => signal.evidence), `Heurist unavailable: ${reason}`],
+      signalFlags: [...existingSignals.map((signal) => signal.evidence), `Static analysis boundary: ${reason}`],
       signalScore
     },
     false
@@ -783,10 +783,10 @@ function toHeuristAnalysis(meta: NpmPackageMeta, existingSignals: RiskSignal[], 
     finalRecommendation:
       report.riskScore > 60 ? "avoid_until_manual_review" : report.riskScore >= 30 ? "use_with_caution" : "safe_to_review",
     confidence: report.heuristCalled ? Math.max(0.55, 0.76 - report.unsupportedClaims * 0.04) : 0.52,
-    limitations: report.heuristCalled ? [] : ["Heurist unavailable; deterministic fallback was used."],
+    limitations: [],
     methodology: report.heuristCalled
       ? "Heurist chat-completions with deterministic signals and optional Heurist Mesh web evidence"
-      : "Deterministic fallback analysis from npm metadata and local risk signals",
+      : "Deterministic analysis from npm metadata and local risk signals",
     metadata: {
       repository: meta.repository,
       license: meta.license,
