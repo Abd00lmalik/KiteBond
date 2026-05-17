@@ -66,6 +66,7 @@ export default function HuntDetailPage() {
   const [hunt, setHunt] = useState<Hunt | null>(null);
   const [loading, setLoading] = useState(true);
   const [stakeTx, setStakeTx] = useState<string | null>(null);
+  const [stakeWarning, setStakeWarning] = useState<string | null>(null);
   const preflight = useHuntPreflight({ stakeAmount: hunt?.stakeRequired, rewardAmount: hunt?.rewardAmount });
   const missingContracts = getMissingContractConfig();
   const huntSpender = (() => {
@@ -146,16 +147,26 @@ export default function HuntDetailPage() {
       }
       setStakeTx(tx);
       setHasJoinedSession(true);
+      setStakeWarning(null);
       await refetchHasStaked();
       
       // Record join in DB
-      await safeFetch(`/api/hunts/${hunt.id}/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentAddress: address, txHash: tx })
-      });
+      let indexFailed = false;
+      try {
+        await safeFetch(`/api/hunts/${hunt.id}/join`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentAddress: address, txHash: tx })
+        });
+      } catch (err) {
+        indexFailed = true;
+      }
       
-      toast.success("Stake locked on Kite.");
+      if (indexFailed) {
+        setStakeWarning("Stake confirmed on-chain. Database indexing pending — you may proceed to submit your report.");
+      } else {
+        toast.success("Stake locked on Kite and indexed.");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Stake transaction failed.");
     }
@@ -281,9 +292,16 @@ export default function HuntDetailPage() {
                     </p>
                   </div>
                 ) : hasStaked ? (
-                  <div className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] px-4 py-3 font-semibold text-[var(--cyber-green)]">
-                    <CheckCircle2 className="h-4 w-4" />
-                    Joined ✓ ({hunt.stakeRequired} USDT staked)
+                  <div className="space-y-3">
+                    <div className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] px-4 py-3 font-semibold text-[var(--cyber-green)]">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Joined ✓ ({hunt.stakeRequired} USDT staked)
+                    </div>
+                    {stakeWarning && (
+                      <div className="rounded-[var(--radius-md)] border border-[var(--amber)] bg-[var(--amber-ghost)] p-3 text-xs text-[var(--amber)]">
+                        {stakeWarning}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <button

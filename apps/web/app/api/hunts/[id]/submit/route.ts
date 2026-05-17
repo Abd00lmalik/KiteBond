@@ -62,19 +62,7 @@ function recommendationFor(severity: "low" | "medium" | "high" | "critical") {
   return "safe_to_review";
 }
 
-// Minimal ABI for hasStaked read-only check
-const HAS_STAKED_ABI = [
-  {
-    name: "hasStaked",
-    type: "function",
-    stateMutability: "view",
-    inputs: [
-      { name: "huntId", type: "uint256" },
-      { name: "agent", type: "address" }
-    ],
-    outputs: [{ name: "", type: "bool" }]
-  }
-] as const;
+// HAS_STAKED_ABI removed as it's now in stake-verify.ts
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -108,65 +96,36 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     // ── STAKE ENFORCEMENT ──────────────────────────────────────────────────────
-    // The KiteBond contract's submitReport() also enforces hasStaked on-chain.
-    // We add a pre-check here to return a clear error message before wasting gas.
-    if (hunt.chainHuntId !== null && hunt.chainHuntId !== undefined) {
-      let stakeVerified = false;
-      let stakeCheckError: string | null = null;
+    let isStaked = false;
+    let stakeCheckError: string | null = null;
+    const effectiveChainHuntId = hunt.chainHuntId ?? hunt.onChainId;
 
+    if (effectiveChainHuntId !== null && effectiveChainHuntId !== undefined) {
       try {
-        const provider = new ethers.JsonRpcProvider(KITE_RPC_URL);
-        const contract = new ethers.Contract(HUNT_REGISTRY_ADDRESS, HAS_STAKED_ABI, provider);
-        const staked = await contract.hasStaked(BigInt(hunt.chainHuntId), body.agentAddress);
-        stakeVerified = Boolean(staked);
+        const { verifyOnChainStake } = await import("@/lib/stake-verify");
+        isStaked = await verifyOnChainStake(effectiveChainHuntId, body.agentAddress);
       } catch (err) {
         stakeCheckError = err instanceof Error ? err.message : String(err);
         console.warn("[Submit] On-chain hasStaked check failed, falling back to DB:", stakeCheckError);
       }
+    }
 
-      if (!stakeVerified) {
-        if (stakeCheckError) {
-          // RPC unreachable — fall back to DB join record
-          const joinRecord = await prisma.agentJoin.findUnique({
-            where: { huntId_agentAddress: { huntId: hunt.id, agentAddress: body.agentAddress.toLowerCase() } }
-          });
-          if (!joinRecord) {
-            return NextResponse.json(
-              {
-                error: "Agent has not staked for this hunt. Call stakeAndJoin on the KiteBond contract before submitting.",
-                code: "AGENT_NOT_STAKED",
-                hint: "RPC check failed, DB join record also not found."
-              },
-              { status: 403 }
-            );
-          }
-          // DB record found — allow through
-        } else {
-          // On-chain check conclusively returned false
-          return NextResponse.json(
-            {
-              error: "Agent has not staked for this hunt. Call stakeAndJoin on the KiteBond contract before submitting.",
-              code: "AGENT_NOT_STAKED"
-            },
-            { status: 403 }
-          );
-        }
-      }
-    } else {
-      // No chainHuntId — DB-only hunt. Check DB join record.
-      const joinRecord = await prisma.agentJoin.findUnique({
-        where: { huntId_agentAddress: { huntId: hunt.id, agentAddress: body.agentAddress.toLowerCase() } }
+    if (!isStaked) {
+      const joinRecord = await prisma.agentJoin.findFirst({
+        where: { huntId: hunt.id, agentAddress: body.agentAddress.toLowerCase() }
       });
-      if (!joinRecord) {
-        return NextResponse.json(
-          {
-            error: "Agent has not staked for this hunt.",
-            code: "AGENT_NOT_STAKED",
-            hint: "This hunt has no on-chain ID. Record your join via POST /api/hunts/{id}/join."
-          },
-          { status: 403 }
-        );
-      }
+      isStaked = Boolean(joinRecord?.onChainStaked || joinRecord?.txHash);
+    }
+
+    if (!isStaked) {
+      return NextResponse.json(
+        {
+          error: "not_staked",
+          message: "Agent has not staked for this hunt. Complete the stake/join step first.",
+          hint: stakeCheckError ? "RPC check failed and DB join record also not found." : "On-chain check confirmed not staked."
+        },
+        { status: 403 }
+      );
     }
     // ── END STAKE ENFORCEMENT ──────────────────────────────────────────────────
 

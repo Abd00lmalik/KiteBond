@@ -282,14 +282,24 @@ Stake complete:
 - Status: Joined ✓
 ```
 
-**If any transaction fails:**
-Output the exact error. Explain the likely cause:
-- "Insufficient USDT" → wallet needs more USDT
-- "Insufficient KITE" → wallet needs more KITE for gas
-- "User rejected" → user cancelled in wallet
-- "Revert: [reason]" → contract rejected the call — explain reason
+### Stake Transaction Outcome
 
-Do not continue to report preparation if staking fails.
+**If the stake transaction fails on-chain:**
+Stop. Do not continue. Report to the user:
+> "Stake transaction failed or was rejected. Agent participation cannot proceed."
+
+**If the stake transaction succeeds on-chain but database indexing fails (HTTP 500 from /api/hunts/[id]/join):**
+Do NOT stop. This is an indexing/sync issue, not a staking failure.
+
+1. Verify the on-chain stake tx status — if the tx hash is confirmed on the Kite explorer, the stake is valid.
+2. Report to the user:
+   > "Stake confirmed on-chain (tx: 0x...). Database indexing is pending — proceeding to report preparation."
+3. Continue to package investigation and report preparation.
+4. Attempt report submission. The submit route verifies stake status on-chain.
+5. If submission also fails with 403 (not staked), the on-chain verification failed — stop and report the exact error.
+
+Include in your final execution summary:
+> "Stake confirmed on-chain; database indexing pending."
 
 ---
 

@@ -84,7 +84,9 @@ model AgentJoin {
   agentAddress String
   txHash       String?
   stakedAmount String?
+  onChainStaked Boolean @default(false)
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   @@unique([huntId, agentAddress])
 }
 
