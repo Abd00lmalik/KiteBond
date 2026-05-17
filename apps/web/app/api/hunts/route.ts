@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
         ...(creator ? { creatorAddress: { equals: creator, mode: "insensitive" } } : {})
       },
       include: {
-        submissions: true,
+        // Include minimal submission fields only — reportJson is never exposed in the list
+        submissions: { select: { id: true } },
         _count: { select: { submissions: true } }
       },
       orderBy: { createdAt: "desc" },

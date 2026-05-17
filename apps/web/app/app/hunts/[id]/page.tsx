@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { CheckCircle2, Loader2, Shield, Trophy } from "lucide-react";
+import { CheckCircle2, Loader2, Shield } from "lucide-react";
 import toast from "react-hot-toast";
 import { ethers } from "ethers";
 import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
 import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
-import { FindingsRenderer } from "@/components/hunts/FindingsRenderer";
 import { Badge } from "@/components/shared/Badge";
 import { useHuntPreflight } from "@/hooks/useHuntPreflight";
 import { useApproveToken, useStakeAndJoin, useSubmitReportOnChain } from "@/hooks/useKiteBond";
@@ -18,17 +18,11 @@ import { getHuntRegistryAddress, getMissingContractConfig } from "@/lib/contract
 import { ApiError, safeFetch } from "@/lib/safeFetch";
 import { formatUsdt, truncateHash } from "@/lib/utils";
 
-type Submission = {
+// Public submission shape — reportJson is NEVER returned to non-creator callers
+type PublicSubmission = {
   id: string;
   agentAddress: string;
-  stakeTx: string | null;
-  reportHash: string | null;
-  reportJson: unknown;
   status: string;
-  verifierResult: boolean | null;
-  verificationHash: string | null;
-  verificationTx: string | null;
-  settlementTx: string | null;
   submittedAt: string;
 };
 
@@ -47,7 +41,8 @@ type Hunt = {
   createdTx: string | null;
   winnerAddress: string | null;
   settlementTx: string | null;
-  submissions: Submission[];
+  submissionsCount?: number;
+  submissions: PublicSubmission[];
 };
 
 function submissionTone(status: string) {
@@ -71,7 +66,6 @@ export default function HuntDetailPage() {
   const [hunt, setHunt] = useState<Hunt | null>(null);
   const [loading, setLoading] = useState(true);
   const [stakeTx, setStakeTx] = useState<string | null>(null);
-  const [selectingId, setSelectingId] = useState<string | null>(null);
   const preflight = useHuntPreflight({ stakeAmount: hunt?.stakeRequired, rewardAmount: hunt?.rewardAmount });
   const missingContracts = getMissingContractConfig();
   const huntSpender = (() => {
@@ -84,10 +78,12 @@ export default function HuntDetailPage() {
 
   const isCreator = Boolean(address && hunt?.creatorAddress.toLowerCase() === address.toLowerCase());
   const currentUserSubmission = useMemo(
-    () => hunt?.submissions.find((submission) => address && submission.agentAddress.toLowerCase() === address.toLowerCase()),
+    () => hunt?.submissions.find((s) => address && s.agentAddress.toLowerCase() === address.toLowerCase()),
     [address, hunt?.submissions]
   );
+  const submissionsCount = hunt?.submissionsCount ?? hunt?.submissions.length ?? 0;
 
+  // Public fetch — does NOT send x-wallet-address, so the API returns no report content
   const loadHunt = useCallback(async () => {
     if (!params.id) return;
     setLoading(true);
@@ -146,7 +142,7 @@ export default function HuntDetailPage() {
       version: hunt.version,
       riskScore: 25,
       riskLevel: "medium",
-      summary: `${hunt.packageName}@${hunt.version} was reviewed using npm registry metadata and static supply-chain heuristics. The report identifies metadata and dependency risk signals for creator review.`,
+      summary: `${hunt.packageName}@${hunt.version} was reviewed using npm registry metadata and static supply-chain heuristics.`,
       signals: [
         {
           type: "metadata_signal",
@@ -158,52 +154,22 @@ export default function HuntDetailPage() {
       finalRecommendation: "use_with_caution",
       confidence: 0.72,
       limitations: ["Browser-generated test report uses registry metadata and does not inspect package tarball contents."],
-      metadata: {
-        repository: null,
-        license: null,
-        dependencyCount: 0,
-        hasInstallScripts: false
-      }
+      metadata: { repository: null, license: null, dependencyCount: 0, hasInstallScripts: false }
     };
     const reportHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(report))) as `0x${string}`;
 
     try {
       const submitTx = await submitReport({ chainHuntId: hunt.chainHuntId, reportHash });
-      const json = await safeFetch<{ data?: Submission }>(`/api/agent/hunts/${hunt.id}/submit-report`, {
+      const json = await safeFetch<{ data?: unknown }>(`/api/agent/hunts/${hunt.id}/submit-report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentAddress: address,
-          stakeTxHash: stakeTx,
-          submitTxHash: submitTx,
-          reportHash,
-          reportJson: report
-        })
+        body: JSON.stringify({ agentAddress: address, stakeTxHash: stakeTx, submitTxHash: submitTx, reportHash, reportJson: report })
       });
       if (!json.data) throw new Error("Report submission failed");
-
       toast.success("Report submitted for verifier review.");
       await loadHunt();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Report submission failed.");
-    }
-  }
-
-  async function selectWinner(submissionId: string) {
-    if (!hunt || !address) return;
-    setSelectingId(submissionId);
-    try {
-      await safeFetch(`/api/hunts/${hunt.id}/select-winner`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId, walletAddress: address })
-      });
-      toast.success("Winner selected and settlement recorded.");
-      await loadHunt();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Winner selection failed.");
-    } finally {
-      setSelectingId(null);
     }
   }
 
@@ -261,9 +227,20 @@ export default function HuntDetailPage() {
             {!isConnected ? (
               <div className="mt-4"><ConnectButton /></div>
             ) : isCreator ? (
-              <p className="mt-3 text-sm">Creator wallet controls winner selection after verifier approval.</p>
+              <div className="mt-3 space-y-2">
+                <p className="text-sm text-[var(--text-secondary)]">You are the hunt creator.</p>
+                <Link
+                  href={`/app/my-hunts/${hunt.id}`}
+                  className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-brand-orange px-4 py-2 text-sm font-semibold text-black"
+                >
+                  Review Submissions →
+                </Link>
+              </div>
             ) : currentUserSubmission ? (
-              <p className="mt-3 text-sm">Your submission status: {currentUserSubmission.status}</p>
+              <div className="mt-3 space-y-2">
+                <p className="text-sm">Your submission status:</p>
+                <Badge tone={submissionTone(currentUserSubmission.status)} label={currentUserSubmission.status} />
+              </div>
             ) : (
               <div className="mt-4 space-y-3">
                 <button
@@ -275,7 +252,12 @@ export default function HuntDetailPage() {
                   {isApproving || isStaking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
                   {isApproving ? "Approving stake..." : isStaking ? "Joining hunt..." : "Stake & Join"}
                 </button>
-                <button type="button" onClick={submitAgentReport} disabled={isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-orange)] px-4 py-3 font-semibold text-brand-orange disabled:opacity-60">
+                <button
+                  type="button"
+                  onClick={submitAgentReport}
+                  disabled={isSubmitting}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-orange)] px-4 py-3 font-semibold text-brand-orange disabled:opacity-60"
+                >
                   {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Submit Agent Report
                 </button>
@@ -293,7 +275,9 @@ export default function HuntDetailPage() {
             <h1 className="mt-2 text-3xl">{hunt.packageName}@{hunt.version}</h1>
             <p className="mt-3">Bonded npm package investigation on KiteAI Testnet.</p>
           </div>
-          <span className="rounded-full border border-[var(--border-orange)] bg-[var(--orange-dim)] px-3 py-1 text-xs font-semibold text-brand-orange">{hunt.status}</span>
+          <span className="rounded-full border border-[var(--border-orange)] bg-[var(--orange-dim)] px-3 py-1 text-xs font-semibold text-brand-orange">
+            {hunt.status}
+          </span>
         </div>
         <div className="mt-5 grid gap-4 text-sm md:grid-cols-4">
           <Info label="Reward" value={formatUsdt(hunt.rewardAmount)} />
@@ -304,34 +288,57 @@ export default function HuntDetailPage() {
       </div>
 
       <div className="card p-6">
-        <p className="label text-brand-orange">Submissions</p>
-        <div className="mt-4 space-y-4">
-          {hunt.submissions.map((submission) => (
-            <div key={submission.id} className="rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-glass)] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-[var(--text-primary)]">Agent {truncateHash(submission.agentAddress, 8, 6)}</p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">Submitted {new Date(submission.submittedAt).toLocaleString()}</p>
-                </div>
-                <Badge tone={submissionTone(submission.status)} label={submission.status} />
-              </div>
-              <div className="mt-4">
-                <FindingsRenderer reportJson={submission.reportJson} />
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-                {submission.verificationTx && <TxLink hash={submission.verificationTx} />}
-                {submission.settlementTx && <TxLink hash={submission.settlementTx} />}
-              </div>
-              {isCreator && submission.status === "VerifiedValid" && hunt.status !== "Settled" && (
-                <button type="button" onClick={() => selectWinner(submission.id)} disabled={selectingId === submission.id} className="mt-4 inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-brand-orange px-4 py-2 text-sm font-semibold text-black disabled:opacity-60">
-                  {selectingId === submission.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trophy className="h-4 w-4" />}
-                  Select as Winner
-                </button>
-              )}
-            </div>
-          ))}
-          {hunt.submissions.length === 0 && <p>No submissions yet. Open agents can stake and submit through the UI or `/skill.md` flow.</p>}
+        <div className="flex items-center justify-between">
+          <p className="label text-brand-orange">Submissions</p>
+          <span className="rounded-full border border-[var(--border-default)] bg-[var(--surface-1)] px-3 py-1 text-xs font-semibold text-[var(--text-secondary)]">
+            {submissionsCount} {submissionsCount === 1 ? "submission" : "submissions"}
+          </span>
         </div>
+
+        {isCreator ? (
+          <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] p-4">
+            <p className="text-sm font-semibold text-brand-orange">Creator Review — My Hunts</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Full submission reports are private and only accessible in the My Hunts review panel.
+            </p>
+            <Link href={`/app/my-hunts/${hunt.id}`} className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-brand-orange">
+              Open Review Panel →
+            </Link>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {hunt.submissions.length === 0 ? (
+              <p className="text-sm text-[var(--text-secondary)]">
+                No submissions yet. Open agents can stake and submit through the UI or{" "}
+                <code className="text-xs">/skill.md</code> flow.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Submission reports are private. Only the hunt creator can view findings.
+                </p>
+                <div className="space-y-2">
+                  {hunt.submissions.map((submission) => (
+                    <div
+                      key={submission.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--bg-glass)] px-4 py-3"
+                    >
+                      <div>
+                        <p className="font-mono text-sm text-[var(--text-secondary)]">
+                          {truncateHash(submission.agentAddress, 8, 6)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                          {new Date(submission.submittedAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <Badge tone={submissionTone(submission.status)} label={submission.status} />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </AppShell>
   );
