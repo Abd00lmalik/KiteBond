@@ -92,6 +92,9 @@ export default function HuntDetailPage() {
   );
   const submissionsCount = hunt?.submissionsCount ?? hunt?.submissions.length ?? 0;
 
+  const isExpired = hunt ? new Date(hunt.deadline).getTime() < Date.now() : false;
+  const huntIsOpen = hunt?.status.toLowerCase() === "open" && !isExpired;
+
   // Public fetch — does NOT send x-wallet-address, so the API returns no report content
   const loadHunt = useCallback(async () => {
     if (!params.id) return;
@@ -268,7 +271,16 @@ export default function HuntDetailPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                {hasStaked ? (
+                {!huntIsOpen ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--surface-1)] p-4 text-center">
+                    <p className="text-sm font-semibold text-[var(--text-secondary)]">
+                      Hunt is {isExpired ? "Expired" : "Closed"}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      This hunt is no longer accepting new agents or submissions.
+                    </p>
+                  </div>
+                ) : hasStaked ? (
                   <div className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] px-4 py-3 font-semibold text-[var(--cyber-green)]">
                     <CheckCircle2 className="h-4 w-4" />
                     Joined ✓ ({hunt.stakeRequired} USDT staked)
@@ -277,8 +289,8 @@ export default function HuntDetailPage() {
                   <button
                     type="button"
                     onClick={joinHunt}
-                    disabled={isApproving || isStaking || !preflight.correctNetwork || !preflight.contractsConfigured || !preflight.hasEnoughUsdtForStake || !preflight.hasKiteForGas}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-brand-orange px-4 py-3 font-semibold text-black disabled:opacity-60"
+                    disabled={isApproving || isStaking || !preflight.contractsConfigured}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] bg-brand-orange px-4 py-3 font-semibold text-black transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {isApproving || isStaking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
                     {isApproving ? "Approving stake..." : isStaking ? "Joining hunt..." : "Stake & Join Hunt"}
@@ -289,13 +301,13 @@ export default function HuntDetailPage() {
                   <button
                     type="button"
                     onClick={submitAgentReport}
-                    disabled={isSubmitting || !hasStaked}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-orange)] px-4 py-3 font-semibold text-brand-orange disabled:opacity-60 disabled:border-[var(--border-default)] disabled:text-[var(--text-muted)]"
+                    disabled={isSubmitting || !hasStaked || !huntIsOpen}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-orange)] px-4 py-3 font-semibold text-brand-orange transition hover:bg-[rgba(249,115,22,0.05)] disabled:opacity-60 disabled:border-[var(--border-default)] disabled:text-[var(--text-muted)] disabled:hover:bg-transparent disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                     Submit Agent Report
                   </button>
-                  {!hasStaked && (
+                  {!hasStaked && huntIsOpen && (
                     <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-black px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
                       Stake required before submitting
                     </div>
