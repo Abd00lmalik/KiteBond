@@ -19,8 +19,7 @@ export interface RiskSignal {
   evidenceGrade?: "confirmed" | "suspicious" | "heuristic" | "missing_data" | "historical";
 }
 
-const POPULAR_PACKAGES = [
-  "lodash",
+const TYPOSQUAT_TARGETS = [
   "axios",
   "express",
   "react",
@@ -75,7 +74,6 @@ function levenshtein(a: string, b: string): number {
 
 export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
   const signals: RiskSignal[] = [];
-  const isPopular = POPULAR_PACKAGES.includes(meta.name.toLowerCase());
   const incidentMatches = matchKnownIncidents(meta.name.toLowerCase(), meta.version);
   const primaryIncident = incidentMatches[0];
   for (const match of incidentMatches) {
@@ -124,7 +122,7 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
   }
 
   const normalizedName = meta.name.toLowerCase().replace(/[-_]/g, "");
-  for (const popular of POPULAR_PACKAGES) {
+  for (const popular of TYPOSQUAT_TARGETS) {
     const popularName = popular.toLowerCase().replace(/[-_]/g, "");
     if (normalizedName !== popularName && normalizedName.length > 2) {
       const distance = levenshtein(normalizedName, popularName);
@@ -188,14 +186,14 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
     }
   }
 
-  if (!isPopular && meta.weeklyDownloads === 0) {
+  if (meta.weeklyDownloads === 0) {
     signals.push({
       type: "metadata_signal",
       severity: "high",
       evidence: "Package has zero recorded weekly downloads.",
       recommendation: "Avoid until adoption and provenance can be verified."
     });
-  } else if (!isPopular && meta.weeklyDownloads < 1000) {
+  } else if (meta.weeklyDownloads < 1000) {
     signals.push({
       type: "metadata_signal",
       severity: meta.weeklyDownloads < 100 ? "high" : "medium",
@@ -241,7 +239,7 @@ export function computeRiskSignals(meta: NpmPackageMeta): RiskSignal[] {
     });
   }
 
-  return isPopular ? signals.filter((signal) => signal.severity === "critical" || signal.severity === "high") : signals;
+  return signals;
 }
 
 export function computeRiskScore(signals: RiskSignal[]): number {

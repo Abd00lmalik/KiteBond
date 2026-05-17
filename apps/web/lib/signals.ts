@@ -64,7 +64,6 @@ const KNOWN_POPULAR = new Set([
   "jsonfile",
   "jsonwebtoken",
   "less",
-  "lodash",
   "mongoose",
   "minimist",
   "mkdirp",
@@ -113,56 +112,6 @@ const KNOWN_POPULAR = new Set([
   "yargs",
   "zod"
 ]);
-const TOP_PACKAGES = new Set([
-  "lodash",
-  "react",
-  "react-dom",
-  "express",
-  "axios",
-  "typescript",
-  "webpack",
-  "babel-core",
-  "@babel/core",
-  "eslint",
-  "jest",
-  "mocha",
-  "moment",
-  "chalk",
-  "commander",
-  "dotenv",
-  "uuid",
-  "underscore",
-  "ramda",
-  "async",
-  "bluebird",
-  "request",
-  "cheerio",
-  "mongoose",
-  "sequelize",
-  "next",
-  "vue",
-  "angular",
-  "@angular/core",
-  "jquery",
-  "rxjs",
-  "redux",
-  "mobx",
-  "tailwindcss",
-  "postcss",
-  "sass",
-  "vite",
-  "rollup",
-  "esbuild",
-  "prettier",
-  "husky",
-  "nodemon",
-  "pm2",
-  "cors",
-  "helmet",
-  "passport",
-  "jsonwebtoken",
-  "bcrypt"
-]);
 const MALWARE_SCRIPT_PATTERNS = [
   /\bcurl\b.*\|.*\bsh\b/i,
   /\bwget\b.*\|.*\bsh\b/i,
@@ -185,7 +134,6 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
 
   const inputLower = packageInput.trim().toLowerCase();
   const nameLower = meta.name.toLowerCase();
-  const isTopPackage = TOP_PACKAGES.has(inputLower) || TOP_PACKAGES.has(nameLower);
 
   const incidentMatches = matchKnownIncidents(nameLower, meta.version);
   const activeIncidents = incidentMatches.filter((item) => item.status === "active");
@@ -277,7 +225,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
     score += 8;
   }
 
-  if (!isTopPackage && meta.weeklyDownloads === 0) {
+  if (meta.weeklyDownloads === 0) {
     flags.push({
       code: "NO_DOWNLOADS",
       severity: "high",
@@ -285,7 +233,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       evidenceGrade: "heuristic"
     });
     score += 25;
-  } else if (!isTopPackage && meta.weeklyDownloads < 100) {
+  } else if (meta.weeklyDownloads < 100) {
     flags.push({
       code: "VERY_LOW_DOWNLOADS",
       severity: "high",
@@ -293,7 +241,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       evidenceGrade: "heuristic"
     });
     score += 20;
-  } else if (!isTopPackage && meta.weeklyDownloads < 1000) {
+  } else if (meta.weeklyDownloads < 1000) {
     flags.push({
       code: "LOW_DOWNLOADS",
       severity: "medium",
@@ -301,7 +249,7 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       evidenceGrade: "heuristic"
     });
     score += 12;
-  } else if (!isTopPackage && meta.weeklyDownloads < 10_000) {
+  } else if (meta.weeklyDownloads < 10_000) {
     flags.push({
       code: "MODERATE_DOWNLOADS",
       severity: "low",
@@ -512,14 +460,6 @@ export function extractSignals(meta: NpmPackageMeta, packageInput: string, tarba
       });
       score += 5;
     }
-  }
-
-  if (isTopPackage) {
-    score = Math.max(0, score - 25);
-    const filteredFlags = flags.filter(
-      (flag) => flag.severity === "critical" || flag.severity === "high" || (flag.code.startsWith("KNOWN_INCIDENT") && flag.severity !== "low")
-    );
-    return { riskScore: Math.min(100, score), flags: filteredFlags };
   }
 
   return { riskScore: Math.min(100, score), flags };

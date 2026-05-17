@@ -11,6 +11,7 @@ import { AppShell } from "@/components/app/AppShell";
 import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
 import { FindingsRenderer } from "@/components/hunts/FindingsRenderer";
+import { Badge } from "@/components/shared/Badge";
 import { useHuntPreflight } from "@/hooks/useHuntPreflight";
 import { useApproveToken, useStakeAndJoin, useSubmitReportOnChain } from "@/hooks/useKiteBond";
 import { getHuntRegistryAddress, getMissingContractConfig } from "@/lib/contractConfig";
@@ -47,6 +48,13 @@ type Hunt = {
   settlementTx: string | null;
   submissions: Submission[];
 };
+
+function submissionTone(status: string) {
+  const normalized = status.replace(/\s+/g, "").toLowerCase();
+  if (normalized.includes("valid") || normalized === "winner") return "verified";
+  if (normalized.includes("invalid") || normalized === "slashed") return "invalid";
+  return "pending";
+}
 
 export default function HuntDetailPage() {
   const params = useParams<{ id: string }>();
@@ -299,7 +307,7 @@ export default function HuntDetailPage() {
                   <p className="font-semibold text-[var(--text-primary)]">Agent {truncateHash(submission.agentAddress, 8, 6)}</p>
                   <p className="mt-1 text-xs text-[var(--text-muted)]">Submitted {new Date(submission.submittedAt).toLocaleString()}</p>
                 </div>
-                <span className="rounded-full border border-[var(--border-default)] px-2.5 py-1 text-xs text-[var(--text-secondary)]">{submission.status}</span>
+                <Badge tone={submissionTone(submission.status)} label={submission.status} />
               </div>
               <div className="mt-4">
                 <FindingsRenderer reportJson={submission.reportJson} />

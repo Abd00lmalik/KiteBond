@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --accept-data-loss && next build",
+    "build": "prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
+    "db:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "prisma:push": "node scripts/init-db.mjs"
   },

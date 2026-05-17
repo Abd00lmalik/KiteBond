@@ -47,6 +47,13 @@ function getSummary(reportJson: unknown) {
   return asString(reportJson.summary) || asString(reportJson.finalRecommendation);
 }
 
+function getConfidence(reportJson: unknown) {
+  if (!isRecord(reportJson)) return null;
+  const raw = reportJson.confidence;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  return raw <= 1 ? `${Math.round(raw * 100)}%` : `${Math.round(raw)}%`;
+}
+
 function getSnippet(finding: FindingRecord) {
   return asString(finding.code) || asString(finding.snippet);
 }
@@ -54,6 +61,7 @@ function getSnippet(finding: FindingRecord) {
 export function FindingsRenderer({ reportJson }: { reportJson: unknown }) {
   const findings = getFindings(reportJson);
   const summary = getSummary(reportJson);
+  const confidence = getConfidence(reportJson);
 
   if (!summary && findings.length === 0) {
     return <p className="text-sm text-[var(--text-secondary)]">No structured findings were attached to this submission.</p>;
@@ -65,38 +73,51 @@ export function FindingsRenderer({ reportJson }: { reportJson: unknown }) {
         <div className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-card)] p-4">
           <p className="label">Summary</p>
           <p className="mt-2 text-sm text-[var(--text-primary)]">{summary}</p>
+          {confidence && (
+            <div className="mt-3">
+              <p className="label">Confidence</p>
+              <p className="mt-1 text-sm font-semibold text-brand-orange">{confidence}</p>
+            </div>
+          )}
         </div>
       )}
 
-      {findings.map((finding, index) => {
-        const title = asString(finding.title) || asString(finding.claim) || `Finding ${index + 1}`;
-        const description = asString(finding.description) || asString(finding.evidence) || asString(finding.evidenceSource);
-        const reasoning = asString(finding.reasoning) || asString(finding.recommendation);
-        const severity = normalizeSeverity(finding.severity);
-        const snippet = getSnippet(finding);
-        const language = asString(finding.language) || "text";
+      {findings.length > 0 && (
+        <details className="rounded-[var(--radius-md)] border border-[var(--border-dim)] bg-[var(--bg-card)] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">Evidence</summary>
+          <div className="mt-4 space-y-3">
+            {findings.map((finding, index) => {
+              const title = asString(finding.title) || asString(finding.claim) || `Finding ${index + 1}`;
+              const description = asString(finding.description) || asString(finding.evidence) || asString(finding.evidenceSource);
+              const reasoning = asString(finding.reasoning) || asString(finding.recommendation);
+              const severity = normalizeSeverity(finding.severity);
+              const snippet = getSnippet(finding);
+              const language = asString(finding.language) || "text";
 
-        return (
-          <article key={`${title}-${index}`} className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--bg-glass)] p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {severity && <Badge tone={severity} label={severity} />}
-              <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
-            </div>
-            {description && <p className="mt-3 text-sm text-[var(--text-secondary)]">{description}</p>}
-            {snippet && (
-              <pre className="mt-3 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border-dim)] bg-black/50 p-3 text-xs text-[var(--text-primary)]">
-                <code data-language={language}>{snippet}</code>
-              </pre>
-            )}
-            {reasoning && (
-              <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--border-dim)] bg-[var(--bg-card)] p-3">
-                <p className="label">Evidence / Reasoning</p>
-                <p className="mt-2 text-xs text-[var(--text-secondary)]">{reasoning}</p>
-              </div>
-            )}
-          </article>
-        );
-      })}
+              return (
+                <article key={`${title}-${index}`} className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--bg-glass)] p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {severity && <Badge tone={severity} label={severity} />}
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
+                  </div>
+                  {description && <p className="mt-3 text-sm text-[var(--text-secondary)]">{description}</p>}
+                  {snippet && (
+                    <pre className="mt-3 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border-dim)] bg-black/50 p-3 text-xs text-[var(--text-primary)]">
+                      <code data-language={language}>{snippet}</code>
+                    </pre>
+                  )}
+                  {reasoning && (
+                    <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--border-dim)] bg-[var(--bg-card)] p-3">
+                      <p className="label">Finding Detail</p>
+                      <p className="mt-2 text-xs text-[var(--text-secondary)]">{reasoning}</p>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

@@ -24,6 +24,18 @@ type Hunt = {
 
 const filters = ["All", "Open", "InReview", "Settled"] as const;
 
+function statusClasses(status: string) {
+  const normalized = status.replace(/\s+/g, "").toLowerCase();
+  if (normalized === "open") return "border-[var(--border-orange)] bg-[var(--orange-dim)] text-brand-orange";
+  if (normalized === "inreview") return "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]";
+  if (normalized === "settled") return "border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] text-[var(--cyber-green)]";
+  return "border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--text-secondary)]";
+}
+
+function displayStatus(status: string) {
+  return status === "InReview" ? "In Review" : status;
+}
+
 export default function HuntsPage() {
   const [filter, setFilter] = useState<(typeof filters)[number]>("Open");
   const [hunts, setHunts] = useState<Hunt[]>([]);
@@ -84,18 +96,38 @@ export default function HuntsPage() {
 
       <div className="grid gap-4">
         {hunts.map((hunt) => (
-          <Link key={hunt.id} href={`/app/hunts/${hunt.id}`} className="card p-5 transition hover:border-[var(--border-orange)]">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xl font-semibold text-[var(--text-primary)]">{hunt.packageName}@{hunt.version}</p>
-                <p className="mt-2 text-sm">Reward: {formatUsdt(hunt.rewardAmount)} | Stake: {formatUsdt(hunt.stakeRequired)} | Submissions: {hunt.submissions.length}</p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">Deadline: {new Date(hunt.deadline).toLocaleString()}</p>
+          <Link key={hunt.id} href={`/app/hunts/${hunt.id}`} className="card border-l-2 border-l-[var(--brand-orange)] p-5 transition hover:border-[var(--border-orange)] hover:bg-[rgba(249,115,22,0.04)]">
+            <div className="flex flex-wrap items-start justify-between gap-5">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-xl font-semibold text-[var(--text-primary)]">{hunt.packageName}@{hunt.version}</p>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(hunt.status)}`}>
+                    {displayStatus(hunt.status)}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                  <div>
+                    <p className="label">Reward</p>
+                    <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{formatUsdt(hunt.rewardAmount)}</p>
+                  </div>
+                  <div>
+                    <p className="label">Stake</p>
+                    <p className="mt-1 text-lg font-semibold text-brand-orange">{formatUsdt(hunt.stakeRequired)}</p>
+                  </div>
+                  <div>
+                    <p className="label">Submissions</p>
+                    <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{hunt.submissions.length}</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs text-[var(--text-muted)]">Deadline: {new Date(hunt.deadline).toLocaleString()}</p>
               </div>
-              <div className="text-right">
-                <span className="rounded-full border border-[var(--border-orange)] bg-[var(--orange-dim)] px-2.5 py-1 text-xs font-semibold text-brand-orange">{hunt.status}</span>
-                <div className="mt-3 flex items-center justify-end gap-3">
+              <div className="flex shrink-0 flex-col items-end gap-3 text-right">
+                <span className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] px-3 py-2 text-sm font-semibold text-brand-orange">
+                  View
+                  <ArrowRight className="h-4 w-4" />
+                </span>
+                <div className="flex items-center justify-end gap-3">
                   {hunt.createdTx ? <TxLink hash={hunt.createdTx} /> : <span className="text-xs text-[var(--text-muted)]">{truncateHash(String(hunt.chainHuntId || hunt.id), 8, 4)}</span>}
-                  <ArrowRight className="h-4 w-4 text-brand-orange" />
                 </div>
               </div>
             </div>

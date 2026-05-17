@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Archive, FileSearch, Home, ListChecks, Radar, Rocket, ScrollText, UserRound } from "lucide-react";
-import { useAccount } from "wagmi";
+import { Archive, FileSearch, Home, ListChecks, Radar, ScrollText, UserRound } from "lucide-react";
+import { KiteBondMark, KiteBondWordmark } from "@/components/KiteBondLogo";
 import { WalletPanel } from "./WalletPanel";
 
 const nav = [
@@ -11,25 +11,24 @@ const nav = [
   { href: "/app/instant-scan", label: "Instant Scan", icon: FileSearch },
   { href: "/app/agent-hunt", label: "Agent Hunt", icon: Radar },
   { href: "/app/hunts", label: "Open Hunts", icon: ListChecks },
-  { href: "/app/my-hunts", label: "My Hunts", icon: UserRound, walletOnly: true },
+  { href: "/app/my-hunts", label: "My Hunts", icon: UserRound },
   { href: "/app/scans", label: "Scan History", icon: Archive },
   { href: "/app/skill", label: "Skill Docs", icon: ScrollText }
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { isConnected } = useAccount();
 
   return (
     <div className="sidebar flex h-full w-full shrink-0 flex-col p-4">
       <Link href="/" className="mb-8 flex items-center gap-2 text-xl font-semibold">
-        <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] text-[var(--orange)]">
-          <Rocket className="h-4 w-4" aria-hidden="true" />
+        <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)]">
+          <KiteBondMark />
         </span>
-        <span>KiteBond</span>
+        <KiteBondWordmark />
       </Link>
       <nav className="space-y-1">
-        {nav.filter((item) => !item.walletOnly || isConnected).map((item) => {
+        {nav.map((item) => {
           const active =
             pathname === item.href ||
             (item.href === "/app/hunts" && pathname.startsWith("/app/hunts/")) ||

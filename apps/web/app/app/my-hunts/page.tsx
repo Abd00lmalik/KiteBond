@@ -28,6 +28,14 @@ function normalizeStatus(hunt: Hunt) {
   return hunt.status;
 }
 
+function statusClasses(status: string) {
+  const normalized = status.replace(/\s+/g, "").toLowerCase();
+  if (normalized === "open") return "border-[var(--border-orange)] bg-[var(--orange-dim)] text-brand-orange";
+  if (normalized === "inreview") return "border-[var(--cyber-yellow)] bg-[rgba(255,214,10,0.08)] text-[var(--cyber-yellow)]";
+  if (normalized === "settled" || normalized === "closed") return "border-[var(--cyber-green)] bg-[var(--cyber-green-ghost)] text-[var(--cyber-green)]";
+  return "border-[var(--border-default)] bg-[var(--surface-1)] text-[var(--text-secondary)]";
+}
+
 export default function MyHuntsPage() {
   const { address, isConnected } = useAccount();
   const [hunts, setHunts] = useState<Hunt[]>([]);
@@ -75,37 +83,51 @@ export default function MyHuntsPage() {
 
       {!isConnected ? (
         <div className="card p-6">
-          <p className="mb-4 text-sm text-[var(--text-secondary)]">Connect a wallet to see hunts you created.</p>
+          <p className="mb-4 text-sm text-[var(--text-secondary)]">Connect your wallet to view your hunts.</p>
           <ConnectButton />
         </div>
       ) : (
         <div className="grid gap-4">
           {hunts.map((hunt) => (
-            <Link key={hunt.id} href={`/app/my-hunts/${hunt.id}`} className="card p-5 transition hover:border-[var(--border-orange)]">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-xl font-semibold text-[var(--text-primary)]">{hunt.packageName}@{hunt.version}</p>
-                  <p className="mt-2 text-sm">
-                    Reward: {formatUsdt(hunt.rewardAmount)} | Stake: {formatUsdt(hunt.stakeRequired)} | Submissions: {hunt.submissions.length}
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">Deadline: {new Date(hunt.deadline).toLocaleString()}</p>
-                </div>
-                <div className="text-right">
-                  <span className="rounded-full border border-[var(--border-orange)] bg-[var(--orange-dim)] px-2.5 py-1 text-xs font-semibold text-brand-orange">
-                    {normalizeStatus(hunt)}
-                  </span>
-                  <div className="mt-3 flex items-center justify-end gap-2 text-xs text-[var(--text-muted)]">
-                    Hunt #{hunt.chainHuntId ?? hunt.id.slice(0, 8)}
-                    <ArrowRight className="h-4 w-4 text-brand-orange" />
+            <Link key={hunt.id} href={`/app/hunts/${hunt.id}`} className="card border-l-2 border-l-[var(--brand-orange)] p-5 transition hover:border-[var(--border-orange)] hover:bg-[rgba(249,115,22,0.04)]">
+              <div className="flex flex-wrap items-start justify-between gap-5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-xl font-semibold text-[var(--text-primary)]">{hunt.packageName}@{hunt.version}</p>
+                    <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClasses(normalizeStatus(hunt))}`}>
+                      {normalizeStatus(hunt)}
+                    </span>
                   </div>
+                  <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <div>
+                      <p className="label">Reward</p>
+                      <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{formatUsdt(hunt.rewardAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="label">Required Stake</p>
+                      <p className="mt-1 text-lg font-semibold text-brand-orange">{formatUsdt(hunt.stakeRequired)}</p>
+                    </div>
+                    <div>
+                      <p className="label">Submissions</p>
+                      <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{hunt.submissions.length}</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-xs text-[var(--text-muted)]">Deadline: {new Date(hunt.deadline).toLocaleString()}</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-3 text-right">
+                  <span className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] px-3 py-2 text-sm font-semibold text-brand-orange">
+                    View
+                    <ArrowRight className="h-4 w-4 text-brand-orange" />
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">Hunt #{hunt.chainHuntId ?? hunt.id.slice(0, 8)}</span>
                 </div>
               </div>
             </Link>
           ))}
           {hunts.length === 0 && (
             <div className="card p-8 text-center">
-              <p>No hunts created by this wallet yet.</p>
-              <Link href="/app/agent-hunt" className="mt-4 inline-flex text-brand-orange">Create a bonded hunt</Link>
+              <p>No hunts created yet.</p>
+              <Link href="/app/hunts" className="mt-4 inline-flex text-brand-orange">Create a Hunt</Link>
             </div>
           )}
         </div>

@@ -70,7 +70,7 @@ export default function AgentHuntPage() {
   const { address, isConnected } = useAccount();
   const { approve, isApproving } = useApproveToken();
   const { createHunt, isCreating } = useCreateHunt();
-  const [packageName, setPackageName] = useState("colors");
+  const [packageName, setPackageName] = useState("");
   const [version, setVersion] = useState("latest");
   const [rewardAmount, setRewardAmount] = useState("1");
   const [stakeRequired, setStakeRequired] = useState("0.5");

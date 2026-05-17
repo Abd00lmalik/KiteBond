@@ -750,22 +750,25 @@ pre,
 }
 
 .scan-card-premium-live {
-  border-color: rgba(0, 255, 100, 0.28);
-  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.45), 0 0 38px rgba(0, 255, 100, 0.13);
+  border-color: rgba(251, 146, 60, 0.42);
+  background:
+    linear-gradient(145deg, rgba(251, 146, 60, 0.12), rgba(96, 165, 250, 0.035) 52%, rgba(3, 3, 10, 0.92)),
+    rgba(12, 12, 26, 0.94);
+  box-shadow: 0 24px 68px rgba(0, 0, 0, 0.48), 0 0 46px rgba(251, 146, 60, 0.18);
   transition: transform 220ms ease, box-shadow 240ms ease, border-color 200ms ease, background 220ms ease;
 }
 
 .scan-card-premium-live:hover {
   transform: translateY(-4px) scale(1.01);
-  border-color: rgba(0, 255, 100, 0.5);
+  border-color: rgba(251, 146, 60, 0.62);
   background: linear-gradient(
       160deg,
-      rgba(0, 255, 100, 0.09) 0%,
-      rgba(255, 255, 255, 0.02) 45%,
+      rgba(251, 146, 60, 0.16) 0%,
+      rgba(96, 165, 250, 0.045) 45%,
       rgba(0, 0, 0, 0.15) 100%
     ),
     rgba(12, 12, 26, 0.92);
-  box-shadow: 0 36px 96px rgba(0, 0, 0, 0.5), 0 0 54px rgba(0, 255, 100, 0.2);
+  box-shadow: 0 36px 96px rgba(0, 0, 0, 0.52), 0 0 58px rgba(251, 146, 60, 0.25);
 }
 
 .scan-price-line {
@@ -797,16 +800,19 @@ pre,
   width: 5px;
   height: 5px;
   border-radius: 9999px;
-  background: rgba(0, 255, 100, 0.75);
-  box-shadow: 0 0 8px rgba(0, 255, 100, 0.35);
+  background: rgba(251, 146, 60, 0.85);
+  box-shadow: 0 0 8px rgba(251, 146, 60, 0.38);
 }
 
 .scan-card-premium-locked {
-  opacity: 0.7;
-  filter: saturate(0.35);
+  opacity: 0.72;
+  filter: saturate(0.45);
   cursor: not-allowed;
   pointer-events: none;
   position: relative;
+  background:
+    linear-gradient(145deg, rgba(155, 93, 229, 0.07), rgba(96, 165, 250, 0.025) 48%, rgba(3, 3, 10, 0.92)),
+    rgba(10, 10, 20, 0.86);
 }
 
 .scan-card-premium-locked::before {
@@ -817,8 +823,8 @@ pre,
     45deg,
     transparent,
     transparent 8px,
-    rgba(0, 255, 100, 0.03) 8px,
-    rgba(0, 255, 100, 0.03) 9px
+    rgba(155, 93, 229, 0.035) 8px,
+    rgba(155, 93, 229, 0.035) 9px
   );
   border-radius: inherit;
   pointer-events: none;
@@ -862,15 +868,23 @@ pre,
 }
 
 .badge-soon {
-  background: rgba(155, 93, 229, 0.12);
-  border: 1px solid rgba(155, 93, 229, 0.35);
-  color: var(--cyber-purple);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.6rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   padding: 2px 8px;
   border-radius: 3px;
+}
+
+.scan-card-lock-icon {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.15);
 }
 
 .scan-bullet-locked {
@@ -901,6 +915,94 @@ pre,
   text-transform: uppercase;
   cursor: not-allowed;
   border-radius: 4px;
+}
+
+.report-briefing-card {
+  min-height: 520px;
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01) 50%, rgba(0, 0, 0, 0.14)),
+    rgba(9, 9, 20, 0.92);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+}
+
+.report-briefing-card-calm {
+  border-color: rgba(34, 197, 94, 0.24);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48), 0 0 36px rgba(34, 197, 94, 0.08);
+}
+
+.report-briefing-card-amber {
+  border-color: rgba(251, 146, 60, 0.3);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48), 0 0 40px rgba(251, 146, 60, 0.1);
+}
+
+.report-briefing-card-urgent {
+  border-color: rgba(239, 68, 68, 0.32);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5), 0 0 44px rgba(239, 68, 68, 0.12);
+}
+
+.report-score-dial {
+  min-height: 170px;
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 20px;
+  text-align: center;
+}
+
+.report-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .report-fact-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-slide-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0;
+}
+
+.report-slide-dot.active {
+  width: 24px;
+  border-color: rgba(251, 146, 60, 0.56);
+  background: rgba(251, 146, 60, 0.72);
+}
+
+.report-slide-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+}
+
+.report-slide-nav:hover:not(:disabled) {
+  border-color: var(--border-orange);
+  color: var(--text-primary);
+}
+
+.report-slide-nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.report-slide-nav-primary {
+  border-color: rgba(251, 146, 60, 0.38);
+  color: var(--orange);
+  background: rgba(251, 146, 60, 0.08);
 }
 
 .proof-card {
