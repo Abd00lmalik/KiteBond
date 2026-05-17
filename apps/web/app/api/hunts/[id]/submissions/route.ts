@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     const numericId = Number(params.id);
     const hunt = await prisma.hunt.findFirst({
       where: Number.isFinite(numericId)
-        ? { OR: [{ id: params.id }, { chainHuntId: numericId }] }
+        ? { OR: [{ id: params.id }, { chainHuntId: numericId }, { onChainId: numericId }] }
         : { id: params.id },
       include: {
         submissions: {

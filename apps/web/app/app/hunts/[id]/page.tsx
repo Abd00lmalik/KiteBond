@@ -35,6 +35,7 @@ type Submission = {
 type Hunt = {
   id: string;
   chainHuntId: number | null;
+  onChainId?: number | null;
   creatorAddress: string;
   packageName: string;
   version: string;
@@ -54,6 +55,11 @@ function submissionTone(status: string) {
   if (normalized.includes("valid") || normalized === "winner") return "verified";
   if (normalized.includes("invalid") || normalized === "slashed") return "invalid";
   return "pending";
+}
+
+function chainLabel(hunt: Hunt) {
+  const chainId = hunt.onChainId ?? hunt.chainHuntId;
+  return chainId === null || chainId === undefined ? `Record ${hunt.id.slice(0, 8)}` : `Chain Hunt #${chainId}`;
 }
 
 export default function HuntDetailPage() {
@@ -283,7 +289,7 @@ export default function HuntDetailPage() {
       <div className="card card--orange p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="label text-brand-orange">Hunt #{hunt.chainHuntId ?? hunt.id}</p>
+            <p className="label text-brand-orange">{chainLabel(hunt)}</p>
             <h1 className="mt-2 text-3xl">{hunt.packageName}@{hunt.version}</h1>
             <p className="mt-3">Bonded npm package investigation on KiteAI Testnet.</p>
           </div>

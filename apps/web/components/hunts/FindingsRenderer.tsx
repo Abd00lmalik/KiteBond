@@ -9,6 +9,8 @@ type FindingRecord = {
   description?: string;
   evidence?: string;
   evidenceSource?: string;
+  source?: string;
+  location?: string;
   reasoning?: string;
   recommendation?: string;
   severity?: Severity | string;
@@ -58,6 +60,16 @@ function getSnippet(finding: FindingRecord) {
   return asString(finding.code) || asString(finding.snippet);
 }
 
+function getUrl(value: unknown) {
+  const text = asString(value);
+  return text && /^https?:\/\//i.test(text) ? text : null;
+}
+
+function extractUrl(value: unknown) {
+  const text = asString(value);
+  return text?.match(/https?:\/\/\S+/i)?.[0].replace(/[),.;]+$/, "") ?? null;
+}
+
 export function FindingsRenderer({ reportJson }: { reportJson: unknown }) {
   const findings = getFindings(reportJson);
   const summary = getSummary(reportJson);
@@ -93,6 +105,8 @@ export function FindingsRenderer({ reportJson }: { reportJson: unknown }) {
               const severity = normalizeSeverity(finding.severity);
               const snippet = getSnippet(finding);
               const language = asString(finding.language) || "text";
+              const sourceUrl = getUrl(finding.source) || getUrl(finding.evidenceSource) || extractUrl(finding.evidence);
+              const location = asString(finding.location);
 
               return (
                 <article key={`${title}-${index}`} className="rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--bg-glass)] p-4">
@@ -101,6 +115,16 @@ export function FindingsRenderer({ reportJson }: { reportJson: unknown }) {
                     <h4 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h4>
                   </div>
                   {description && <p className="mt-3 text-sm text-[var(--text-secondary)]">{description}</p>}
+                  {(sourceUrl || location) && (
+                    <div className="mt-3 flex flex-wrap gap-3 text-xs">
+                      {sourceUrl && (
+                        <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-orange underline">
+                          Evidence source
+                        </a>
+                      )}
+                      {location && <span className="font-mono text-[var(--text-muted)]">{location}</span>}
+                    </div>
+                  )}
                   {snippet && (
                     <pre className="mt-3 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border-dim)] bg-black/50 p-3 text-xs text-[var(--text-primary)]">
                       <code data-language={language}>{snippet}</code>

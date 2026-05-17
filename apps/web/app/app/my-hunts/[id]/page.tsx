@@ -25,6 +25,7 @@ type Submission = {
 type Hunt = {
   id: string;
   chainHuntId: number | null;
+  onChainId?: number | null;
   creatorAddress: string;
   packageName: string;
   version: string;
@@ -44,6 +45,11 @@ function statusFor(hunt: Hunt) {
   if (hunt.status.toLowerCase() === "open" && new Date(hunt.deadline).getTime() < Date.now()) return "Expired";
   if (hunt.status.toLowerCase() === "settled") return "Closed";
   return hunt.status;
+}
+
+function chainLabel(hunt: Hunt) {
+  const chainId = hunt.onChainId ?? hunt.chainHuntId;
+  return chainId === null || chainId === undefined ? `Record ${hunt.id.slice(0, 8)}` : `Chain Hunt #${chainId}`;
 }
 
 function submissionTone(status: string) {
@@ -122,7 +128,7 @@ export default function MyHuntDetailPage() {
       <div className="card card--orange p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="label text-brand-orange">Hunt #{hunt.chainHuntId ?? hunt.id}</p>
+            <p className="label text-brand-orange">{chainLabel(hunt)}</p>
             <h1 className="mt-2 text-3xl">{hunt.packageName}@{hunt.version}</h1>
             <p className="mt-3">Full metadata and agent submissions for this creator wallet.</p>
           </div>

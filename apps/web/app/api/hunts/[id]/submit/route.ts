@@ -64,6 +64,7 @@ function recommendationFor(severity: "low" | "medium" | "high" | "critical") {
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const body = (await req.json()) as SubmissionBody;
+    console.log("[Submit]", params.id, body.agentAddress, body.severity);
     const severity = severityMap[(body.severity || "").toUpperCase()];
     const confidence = confidenceMap[(body.confidence || "").toUpperCase()] ?? 0.68;
 
@@ -80,7 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const numericId = Number(params.id);
     const hunt = await prisma.hunt.findFirst({
       where: Number.isFinite(numericId)
-        ? { OR: [{ id: params.id }, { chainHuntId: numericId }] }
+        ? { OR: [{ id: params.id }, { chainHuntId: numericId }, { onChainId: numericId }] }
         : { id: params.id }
     });
     if (!hunt) return NextResponse.json({ error: "Hunt not found", code: "HUNT_NOT_FOUND" }, { status: 404 });
@@ -94,6 +95,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const signals = body.evidence.map((item) => ({
       type: signalTypeMap[item.type || ""] || "metadata_signal",
       severity,
+      source: item.source,
+      location: item.location,
       evidence: [item.description, item.source ? `Source: ${item.source}` : null, item.location ? `Location: ${item.location}` : null]
         .filter(Boolean)
         .join(" "),
@@ -141,14 +144,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       create: { address: body.agentAddress, totalSubmitted: 1 }
     });
 
-    return NextResponse.json({
-      submissionId: submission.id,
-      status: "PENDING",
-      data: submission
-    });
+    return NextResponse.json(
+      {
+        submissionId: submission.id,
+        status: "PENDING",
+        data: submission
+      },
+      { status: 201 }
+    );
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Failed to submit finding";
-    console.error("[Hunts Submit] Failed to submit public finding:", error);
+    console.error("[Submit] Error:", error);
     return apiError("Submission failed. Please try again.", 500, detail);
   }
 }

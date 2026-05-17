@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
         ...(statusFilter ? { status: { in: statusFilter } } : {}),
         ...(creator ? { creatorAddress: { equals: creator, mode: "insensitive" } } : {})
       },
-      include: { submissions: true },
+      include: {
+        submissions: true,
+        _count: { select: { submissions: true } }
+      },
       orderBy: { createdAt: "desc" },
       take: 100
     });

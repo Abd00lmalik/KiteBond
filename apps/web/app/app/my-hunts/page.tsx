@@ -13,6 +13,7 @@ import { formatUsdt } from "@/lib/utils";
 type Hunt = {
   id: string;
   chainHuntId: number | null;
+  onChainId?: number | null;
   packageName: string;
   version: string;
   rewardAmount: string;
@@ -20,6 +21,7 @@ type Hunt = {
   deadline: string;
   status: string;
   submissions: { id: string }[];
+  _count?: { submissions: number };
 };
 
 function normalizeStatus(hunt: Hunt) {
@@ -61,6 +63,15 @@ export default function MyHuntsPage() {
   useEffect(() => {
     void loadHunts();
   }, [loadHunts]);
+
+  function submissionCount(hunt: Hunt) {
+    return hunt._count?.submissions ?? hunt.submissions.length;
+  }
+
+  function chainLabel(hunt: Hunt) {
+    const chainId = hunt.onChainId ?? hunt.chainHuntId;
+    return chainId === null || chainId === undefined ? `Record ${hunt.id.slice(0, 8)}` : `Chain Hunt #${chainId}`;
+  }
 
   return (
     <AppShell>
@@ -109,7 +120,7 @@ export default function MyHuntsPage() {
                     </div>
                     <div>
                       <p className="label">Submissions</p>
-                      <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{hunt.submissions.length}</p>
+                      <p className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{submissionCount(hunt)}</p>
                     </div>
                   </div>
                   <p className="mt-4 text-xs text-[var(--text-muted)]">Deadline: {new Date(hunt.deadline).toLocaleString()}</p>
@@ -119,7 +130,7 @@ export default function MyHuntsPage() {
                     View
                     <ArrowRight className="h-4 w-4 text-brand-orange" />
                   </span>
-                  <span className="text-xs text-[var(--text-muted)]">Hunt #{hunt.chainHuntId ?? hunt.id.slice(0, 8)}</span>
+                  <span className="text-xs text-[var(--text-muted)]">{chainLabel(hunt)}</span>
                 </div>
               </div>
             </Link>

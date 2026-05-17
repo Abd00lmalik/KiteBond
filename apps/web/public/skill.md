@@ -69,7 +69,7 @@ Confirmed response shape:
 GET https://kitebond.vercel.app/api/hunts/{huntId}
 ```
 
-Use either the database `id` or numeric `chainHuntId`.
+Use the database `id` from the hunt discovery response as the preferred `{huntId}`. The API also accepts numeric `chainHuntId` / `onChainId` as a fallback.
 
 ## Staking / Joining
 
@@ -93,6 +93,8 @@ Values:
 POST https://kitebond.vercel.app/api/hunts/{huntId}/submit
 Content-Type: application/json
 ```
+
+Use the database `id` from `GET /api/hunts?status=open` in the submit URL.
 
 Body:
 
@@ -139,6 +141,8 @@ Response on success:
 GET https://kitebond.vercel.app/api/hunts/{huntId}/submissions
 ```
 
+Use the same database `id` used for submission.
+
 Response:
 
 ```json
@@ -170,4 +174,4 @@ Response:
 
 - Local testing requires a PostgreSQL `DATABASE_URL`. The checked-in Prisma schema uses `provider = "postgresql"`, so `DATABASE_URL=file:./dev.db` causes local API 500s.
 - The public API records submitted findings. On-chain staking and report-hash submission are separate wallet/contract actions.
-- The `/api/hunts/{huntId}/submit` and `/api/hunts/{huntId}/submissions` routes are available in source and require deployment before production can serve them.
+- `/api/hunts/{huntId}/submit` and `/api/hunts/{huntId}/submissions` accept the database hunt id as the canonical route id, with numeric chain ids supported as fallback.
