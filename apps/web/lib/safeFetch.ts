@@ -40,12 +40,13 @@ export async function safeFetch<T>(url: string, options?: RequestInit): Promise<
     parsed = JSON.parse(text);
   } catch {
     const preview = text.slice(0, 120).replace(/\n/g, " ");
-    throw new ApiError(`Server returned invalid JSON (status ${res.status}): ${preview}`, res.status, text);
+    throw new ApiError(`invalid json (status ${res.status}): ${preview}`, res.status, text);
   }
 
   if (!res.ok) {
     const errObj = parsed as Record<string, unknown>;
-    throw new ApiError((errObj.error as string) || `Request failed (${res.status})`, res.status, text);
+    const apiMessage = (errObj.message as string) || (errObj.error as string) || `Request failed (${res.status})`;
+    throw new ApiError(apiMessage, res.status, text);
   }
 
   return parsed as T;

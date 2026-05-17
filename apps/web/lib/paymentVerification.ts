@@ -9,7 +9,18 @@ export async function verifyKitePaymentTx(txHash: string, payerAddress?: string)
   if (!ethers.isAddress(CONTRACT_CONFIG.paymentToken)) return false;
   if (!ethers.isAddress(SCAN_FEE_TREASURY_ADDRESS)) return false;
   const provider = new ethers.JsonRpcProvider(CONTRACT_CONFIG.rpcUrl);
-  const receipt = await provider.getTransactionReceipt(txHash);
+  
+  let receipt: ethers.TransactionReceipt | null = null;
+  try {
+    receipt = await Promise.race([
+      provider.getTransactionReceipt(txHash),
+      new Promise<null>((_, reject) => setTimeout(() => reject(new Error("RPC timeout")), 6_000))
+    ]);
+  } catch (err) {
+    console.warn("[PaymentVerification] RPC error or timeout:", err instanceof Error ? err.message : err);
+    return false;
+  }
+  
   if (!receipt || receipt.status !== 1) return false;
   if (receipt.to?.toLowerCase() !== CONTRACT_CONFIG.paymentToken.toLowerCase()) return false;
 

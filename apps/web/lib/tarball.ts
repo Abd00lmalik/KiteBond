@@ -62,7 +62,7 @@ export async function inspectTarball(packageName: string, version: string): Prom
   if (!tarballUrl) return null;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 14_000);
+  const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
     const response = await fetch(tarballUrl, {
       method: "GET",
@@ -216,7 +216,7 @@ async function resolveTarballUrl(packageName: string, version: string): Promise<
   const regRes = await fetch(`https://registry.npmjs.org/${encoded}`, {
     headers: { Accept: "application/json" },
     cache: "no-store",
-    signal: AbortSignal.timeout(10_000)
+    signal: AbortSignal.timeout(5_000)
   });
 
   if (!regRes.ok) return null;

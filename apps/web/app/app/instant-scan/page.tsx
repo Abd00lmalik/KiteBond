@@ -682,12 +682,12 @@ function getFailedStep(err: unknown): CompactStepKey {
 function getErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 0) return "Network error. Check your connection.";
-    if (err.status === 402) return "Payment required. Approve USDT to continue.";
+    if (err.status === 402) return "Payment required to run this scan.";
+    if (err.status === 429) return "Too many requests. Please wait a moment.";
     if (err.status === 404) return "Package not found on npm registry.";
-    if (err.status === 408 || err.message.toLowerCase().includes("timed out")) {
-      return "Analysis timed out. Try again or use Instant Scan.";
+    if (err.status === 504 || err.status === 408 || err.message.toLowerCase().includes("invalid json") || err.message.toLowerCase().includes("timed out")) {
+      return "Scan timed out. Try again.";
     }
-    if (err.status >= 500) return `Server error. ${err.message}`;
     return err.message;
   }
 

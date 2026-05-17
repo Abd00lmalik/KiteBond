@@ -5,14 +5,24 @@ import { prisma } from "@/lib/db";
 import { analyzePackageWithHeurist } from "@/lib/heurist";
 import type { RiskSignal, Severity } from "@/lib/heuristics";
 import { toJsonValue } from "@/lib/json";
-import { fetchNpmMeta } from "@/lib/npm";
+import { fetchNpmMeta, type NpmPackageMeta } from "@/lib/npm";
 import { verifyKitePaymentTx } from "@/lib/paymentVerification";
 import { extractSignals } from "@/lib/signals";
 import { matchKnownIncidents } from "@/lib/knownIncidents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 40;
+export const maxDuration = 30; // seconds
+
+const SCAN_DEADLINE_MS = 25_000;
+
+function timeLeft(start: number): number {
+  return SCAN_DEADLINE_MS - (Date.now() - start);
+}
+
+function isOverBudget(start: number): boolean {
+  return timeLeft(start) < 2000;
+}
 
 type ScanStage = "auth" | "resolve" | "analyze" | "save";
 type TarballInspection = {
@@ -42,6 +52,8 @@ function stageError(stage: ScanStage, error: string, status = 500) {
 }
 
 export async function POST(req: NextRequest) {
+  const scanStart = Date.now();
+  try {
   let body: {
     package?: string;
     packageName?: string;
@@ -141,24 +153,36 @@ export async function POST(req: NextRequest) {
     console.error("[Scan][Auth] userUsage upsert failed (non-fatal):", detail);
   }
 
-  let meta;
+  let meta: NpmPackageMeta | null = null;
+  const tRegistry = Date.now();
   try {
     meta = await fetchNpmMeta(packageName, requestedVersion);
   } catch (err) {
-    return stageError(
-      "resolve",
-      err instanceof Error ? err.message : "Failed to resolve package from npm registry.",
-      400
-    );
+    console.warn("[Scan][registry] failed:", err instanceof Error ? err.message : err);
+  }
+  console.log(`[Scan][registry-fetch] ${Date.now() - tRegistry}ms`);
+
+  if (!meta) {
+    return NextResponse.json({
+      success: false,
+      stage: "resolve",
+      error: "Failed to resolve package from npm registry."
+    }, { status: 400 });
   }
 
   let tarballInfo: TarballInspection | null = null;
-  try {
-    // Runtime-only import keeps build tracing resilient on Vercel.
-    const { inspectTarball } = await import("@/lib/tarball");
-    tarballInfo = await inspectTarball(meta.name, meta.version);
-  } catch (err) {
-    console.warn("[Scan] Tarball inspection failed (non-fatal):", err instanceof Error ? err.message : err);
+  if (!isOverBudget(scanStart)) {
+    const tTarball = Date.now();
+    try {
+      // Runtime-only import keeps build tracing resilient on Vercel.
+      const { inspectTarball } = await import("@/lib/tarball");
+      tarballInfo = await inspectTarball(meta.name, meta.version);
+    } catch (err) {
+      console.warn("[Scan][tarball] failed (non-fatal):", err instanceof Error ? err.message : err);
+    }
+    console.log(`[Scan][tarball-inspect] ${Date.now() - tTarball}ms`);
+  } else {
+    console.warn("[Scan][tarball] skipped, over budget.");
   }
 
   const signals = extractSignals(meta, packageName, tarballInfo);
@@ -206,42 +230,68 @@ export async function POST(req: NextRequest) {
   });
 
   let heuristReport;
-  try {
-    heuristReport = await analyzePackageWithHeurist(packageName, {
-      version: meta.version,
-      description: meta.description,
-      author: meta.author,
-      repository: meta.repository,
-      homepage: meta.homepage,
-      keywords: meta.keywords,
-      weeklyDownloads: meta.weeklyDownloads,
-      firstPublishedAt: meta.firstPublishedAt,
-      publishedAt: meta.publishedAt,
-      totalVersions: meta.totalVersions,
-      maintainerCount: meta.maintainerCount,
-      maintainers: meta.maintainers.map((maintainer) => maintainer.name),
-      hasTypes: meta.hasTypes,
-      licenseType: meta.license,
-      hasInstallScript: meta.hasInstallScript,
-      scripts: meta.scripts,
-      dependencyCount: meta.dependencyCount,
-      dependencyNames: meta.dependencyNames,
-      signalFlags: [...signals.flags.map((flag) => flag.message), tarballSection],
-      signalScore: signals.riskScore,
-      evidenceBreakdown,
-      knownIncidentContext: incidentContext,
-      tarballEvidence,
-      auditScope: REPORT_LIMITATIONS
-    });
-  } catch (err) {
-    return NextResponse.json(
-      {
-        success: false,
-        stage: "analyze",
-        error: `Heurist analysis failed. ${err instanceof Error ? err.message : ""}`.trim()
-      },
-      { status: 500 }
+  const tHeurist = Date.now();
+  if (timeLeft(scanStart) >= 13_000) {
+    try {
+      heuristReport = await analyzePackageWithHeurist(packageName, {
+        version: meta.version,
+        description: meta.description,
+        author: meta.author,
+        repository: meta.repository,
+        homepage: meta.homepage,
+        keywords: meta.keywords,
+        weeklyDownloads: meta.weeklyDownloads,
+        firstPublishedAt: meta.firstPublishedAt,
+        publishedAt: meta.publishedAt,
+        totalVersions: meta.totalVersions,
+        maintainerCount: meta.maintainerCount,
+        maintainers: meta.maintainers.map((maintainer) => maintainer.name),
+        hasTypes: meta.hasTypes,
+        licenseType: meta.license,
+        hasInstallScript: meta.hasInstallScript,
+        scripts: meta.scripts,
+        dependencyCount: meta.dependencyCount,
+        dependencyNames: meta.dependencyNames,
+        signalFlags: [...signals.flags.map((flag) => flag.message), tarballSection],
+        signalScore: signals.riskScore,
+        evidenceBreakdown,
+        knownIncidentContext: incidentContext,
+        tarballEvidence,
+        auditScope: REPORT_LIMITATIONS
+      });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "unknown";
+      console.warn("[Scan][heurist] failed, using deterministic fallback:", reason);
+    }
+  } else {
+    console.warn("[Scan][heurist] skipped, over budget.");
+  }
+  console.log(`[Scan][heurist-call] ${Date.now() - tHeurist}ms`);
+
+  if (!heuristReport) {
+    const { buildFallbackAnalysis } = await import("@/lib/heurist");
+    const fallback = buildFallbackAnalysis(
+      meta,
+      signals.flags.map(f => ({
+        type: "metadata_signal",
+        severity: f.severity === "info" ? "low" : severityToRiskLevel(f.severity),
+        evidence: f.message,
+        recommendation: recommendationForFlag(f.code),
+        evidenceGrade: f.evidenceGrade
+      })),
+      "Heurist AI analysis timed out or failed. Used deterministic fallback."
     );
+    heuristReport = {
+      riskScore: fallback.riskScore,
+      summary: fallback.summary,
+      findings: [],
+      details: [],
+      flags: [],
+      recommendation: "caution" as const,
+      heuristCalled: false,
+      unsupportedClaims: 0,
+      meshEvidenceUsed: false
+    };
   }
 
   const riskScore = heuristReport.heuristCalled
@@ -308,6 +358,7 @@ export async function POST(req: NextRequest) {
   let scanRecord: { id: string } | null = null;
   let saveError: string | null = null;
 
+  const tDb = Date.now();
   try {
     scanRecord = await prisma.instantScan.create({
       data: {
@@ -334,9 +385,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     saveError = err instanceof Error ? err.message : String(err);
-    console.error("[Scan] DB save failed (non-fatal):", saveError);
+    console.error("[Scan][db-save] failed (non-fatal):", saveError);
   }
+  console.log(`[Scan][db-save] ${Date.now() - tDb}ms`);
 
+  console.log(`[Scan][total] ${Date.now() - scanStart}ms`);
   return NextResponse.json({
     success: true,
     stage: "complete",
@@ -351,6 +404,19 @@ export async function POST(req: NextRequest) {
       saveError: process.env.NODE_ENV === "development" ? saveError : saveError ? "Scan result was not saved, but analysis completed." : null
     }
   });
+  } catch (err) {
+    console.error("[Scan][fatal]", err);
+    return NextResponse.json(
+      {
+        error: "scan_failed",
+        message: "Scan could not be completed. Please try again.",
+        details: process.env.NODE_ENV === "development"
+          ? (err instanceof Error ? err.message : String(err))
+          : undefined
+      },
+      { status: 500 }
+    );
+  }
 }
 
 function severityToRiskLevel(severity: "critical" | "high" | "medium" | "low" | "info"): Severity {

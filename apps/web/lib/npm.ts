@@ -74,7 +74,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
   const regRes = await fetch(`https://registry.npmjs.org/${encoded}`, {
     headers: { Accept: "application/json" },
     cache: "no-store",
-    signal: AbortSignal.timeout(10_000)
+    signal: AbortSignal.timeout(5_000)
   });
 
   if (regRes.status === 404) throw new Error(`Package "${clean}" not found on npm.`);
@@ -86,7 +86,7 @@ export async function fetchNpmMeta(packageName: string, version = "latest"): Pro
   try {
     const dlRes = await fetch(`https://api.npmjs.org/downloads/point/last-week/${encoded}`, {
       cache: "no-store",
-      signal: AbortSignal.timeout(8_000)
+      signal: AbortSignal.timeout(3_000)
     });
     if (dlRes.ok) {
       const downloads = (await dlRes.json()) as { downloads?: number };

@@ -333,7 +333,7 @@ async function callMeshMcpAgent(url: string, apiKey: string, query: string): Pro
 
 async function callLegacyMeshEndpoint(url: string, apiKey: string, query: string): Promise<string[] | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -360,7 +360,7 @@ async function callLegacyMeshEndpoint(url: string, apiKey: string, query: string
 
 async function meshRpc(url: string, apiKey: string, method: string, params: Record<string, unknown>): Promise<MeshRpcResponse> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -542,7 +542,7 @@ export async function analyzePackageWithHeurist(
     .join("\n");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 35_000);
+  const timeout = setTimeout(() => controller.abort(), 12_000);
 
   try {
     console.log("[Heurist] Calling API. Model:", HEURIST_MODEL, "Package:", packageName);
@@ -624,7 +624,7 @@ export async function analyzePackageWithHeurist(
   } catch (err: unknown) {
     clearTimeout(timeout);
     if (err instanceof Error && err.name === "AbortError") {
-      console.error("[Heurist] Request timed out after 35s.");
+      console.error("[Heurist] Request timed out after 12s.");
     } else {
       console.error("[Heurist] Unexpected error:", err);
     }
