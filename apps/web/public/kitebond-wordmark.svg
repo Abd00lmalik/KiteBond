@@ -1,8 +1,0 @@
-<svg width="520" height="200" viewBox="0 0 520 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M100 18L171 59V141L100 182L29 141V59L100 18Z" stroke="#F97316" stroke-width="12" stroke-linejoin="round"/>
-  <path d="M74 126L100 58L126 126" stroke="#F97316" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M84 104H116" stroke="#F97316" stroke-width="12" stroke-linecap="round"/>
-  <path d="M100 58V142" stroke="#F97316" stroke-width="8" stroke-linecap="round" stroke-opacity="0.45"/>
-  <text x="214" y="118" fill="#FFFFFF" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1">Kite</text>
-  <text x="335" y="118" fill="#F97316" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1">Bond</text>
-</svg>

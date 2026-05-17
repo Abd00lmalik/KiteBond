@@ -1,10 +1,10 @@
 "use client";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { Rocket } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { formatUnits } from "viem";
 import { useAccount, useBalance } from "wagmi";
+import { KiteBondMark } from "@/components/brand/KiteBondLogo";
 import { useNetworkGuard } from "@/hooks/useNetworkGuard";
 import { TEST_USDT_ADDRESS } from "@/lib/contract";
 import { truncateHash } from "@/lib/utils";
@@ -24,7 +24,7 @@ export function TopBar() {
     <header className="z-40 h-[52px] shrink-0 border-b border-[var(--border-dim)] bg-[var(--bg-surface)] px-4 backdrop-blur-md lg:px-6">
       <div className="grid h-full grid-cols-[1fr_auto_1fr] items-center gap-4">
         <div className="flex min-w-0 items-center gap-2 font-semibold capitalize">
-          <Rocket className="h-4 w-4 text-[var(--orange)]" aria-hidden="true" />
+          <KiteBondMark size={20} />
           <span className="truncate">KiteBond / {section}</span>
         </div>
         <div className="hidden items-center justify-center gap-3 md:flex">

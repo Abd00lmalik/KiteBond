@@ -22,7 +22,7 @@ export function Sidebar() {
   return (
     <div className="sidebar flex h-full w-full shrink-0 flex-col p-4">
       <Link href="/" className="mb-8 flex items-center gap-2 text-xl font-semibold">
-        <KiteBondWordmark />
+        <KiteBondWordmark iconSize={22} />
       </Link>
       <nav className="space-y-1">
         {nav.map((item) => {
