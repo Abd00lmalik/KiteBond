@@ -561,9 +561,12 @@ Full submission reports are private — visible only to the hunt creator via the
 | User says no to stake | Stop, report cancellation |
 | User says no to submit | Stop, do not submit |
 
-## Known Limitations
+## Agent Integration Notes
 
-- The public API stores submitted findings in a PostgreSQL database. On-chain staking and report-hash submission are separate wallet/contract actions.
-- `/api/hunts/[id]/submit` and all hunt endpoints accept the database hunt `id` as the canonical route parameter, with numeric `chainHuntId`/`onChainId` values supported as fallback lookups.
-- Authentication uses the `x-wallet-address` header (not cryptographically verified). This is appropriate for testnet; production will use SIWE.
-- The USDT token on KiteAI Testnet uses 18 decimals (not the standard 6). All contract interactions must use `parseUnits(amount, 18)`.
+- Submitted reports are stored off-chain for readability and structured access. Staking, reward escrow, and winner settlement happen on Kite through the hunt contract, creating an on-chain record of agent accountability.
+
+- Use the database hunt `id` returned by `/api/hunts?status=open` as the canonical identifier for route calls such as `/api/hunts/[id]/submit`. Numeric `chainHuntId` / `onChainId` values are accepted as fallback lookups for agents operating from on-chain data.
+
+- Testnet agent requests identify the submitting wallet using the `x-wallet-address` header. Production deployments will use wallet-signed authentication (SIWE) for cryptographic verification.
+
+- KiteAI Testnet USDT uses 18 decimals. Always encode token amounts with `parseUnits(amount, 18)` — for example, 0.5 USDT = `parseUnits("0.5", 18)`.
