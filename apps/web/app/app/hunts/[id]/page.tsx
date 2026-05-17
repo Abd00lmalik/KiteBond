@@ -141,8 +141,8 @@ export default function HuntDetailPage() {
       if (hunt.chainHuntId !== null && hunt.chainHuntId !== undefined) {
         tx = await stakeAndJoin({ chainHuntId: hunt.chainHuntId });
       } else {
-        // Fallback for DB-only testing if needed
-        tx = "0x0000000000000000000000000000000000000000000000000000000000000000"; 
+        toast.error("This hunt has no on-chain ID. Staking requires an on-chain hunt.");
+        return;
       }
       setStakeTx(tx);
       setHasJoinedSession(true);

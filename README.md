@@ -26,10 +26,11 @@ KiteBond scans npm packages instantly and escalates risky packages to bonded AI 
 
 ## Deployed Contracts
 
-- `KiteBondScanPayments`: `0x4accACb834b16CC64ecf7326cFc09F9f21E8646C`
-- `KiteBondHuntRegistry`: `0xe8544c3d4d2bd162903343D8ff4e71D45785689A`
-- Scan payments explorer: `https://testnet.kitescan.ai/address/0x4accACb834b16CC64ecf7326cFc09F9f21E8646C`
-- Hunt registry explorer: `https://testnet.kitescan.ai/address/0xe8544c3d4d2bd162903343D8ff4e71D45785689A`
+- `KiteBondHuntRegistry`: `0x872F690c1BfDbd0e970aC49b958f72C7b4D1166c`
+- `KiteBondScanPayments`: `0xc7BB30bf2689d204787787C944146f373Ea600e1`
+- Protocol Treasury: `0x25265b9dBEb6c653b0CA281110Bb0697a9685107`
+- Hunt registry explorer: `https://testnet.kitescan.ai/address/0x872F690c1BfDbd0e970aC49b958f72C7b4D1166c`
+- Scan payments explorer: `https://testnet.kitescan.ai/address/0xc7BB30bf2689d204787787C944146f373Ea600e1`
 
 ## Repository
 
@@ -73,9 +74,14 @@ Set at least:
 ```bash
 DEPLOYER_PRIVATE_KEY=
 HEURIST_API_KEY=
-DATABASE_URL=file:./dev.db
+DATABASE_URL=postgresql://user:pass@host:5432/kitebond
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+NEXT_PUBLIC_KITEBOND_CONTRACT=0x872F690c1BfDbd0e970aC49b958f72C7b4D1166c
+NEXT_PUBLIC_SCAN_PAYMENTS_CONTRACT=0xc7BB30bf2689d204787787C944146f373Ea600e1
+NEXT_PUBLIC_PAYMENT_TOKEN=0x0fF5393387ad2f9f691FD6Fd28e07E3969e27e63
 ```
+
+The database must be PostgreSQL (e.g. [Neon](https://neon.tech), Supabase, or local Postgres). SQLite (`file:./dev.db`) is not compatible with the Prisma PostgreSQL provider.
 
 Private keys must stay in local environment files.
 
@@ -94,8 +100,8 @@ The deploy script writes `contracts/deployments/kiteTestnet.json`, updates web e
 
 ```bash
 npm install
-npm run prisma:generate -w apps/web
-npm run prisma:push -w apps/web
+cd apps/web && npx prisma generate
+cd apps/web && npx prisma db push
 npm run dev
 ```
 
@@ -166,11 +172,14 @@ The submit script uses `SERVICE_AGENT_PRIVATE_KEY` or `DEPLOYER_PRIVATE_KEY`, ap
 - Verifier logic is deterministic and does not depend entirely on LLM judgment.
 - Scan receipts and settlement transactions link to KiteScan.
 
-## Current Limitations
+## Auditability
 
-- Heurist is required for completed AI reports. If Heurist fails validation twice, the scan fails with a visible error instead of showing a completed AI report.
-- Agent reports can be submitted through the UI for testing or through the external agent API.
-- Indexing currently uses the app database and direct contract calls. A dedicated event indexer can be added later.
+- Hunt creation, reward escrow, agent staking, and winner settlement happen on-chain through `KiteBondHuntRegistry`.
+- Transaction hashes and contract events provide full auditability. Tx links open on KiteScan.
+- Instant Scan reports are not currently anchored on-chain (proof anchoring is available but optional).
+- Heurist is required for completed AI reports. If Heurist fails validation twice, the scan fails with a visible error.
+- Agent reports can be submitted through the UI or the external agent API.
+- Indexing uses the app database and direct contract calls. A dedicated event indexer can be added later.
 
 ## References
 
