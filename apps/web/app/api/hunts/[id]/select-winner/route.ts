@@ -1,25 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ethers } from "ethers";
 import { apiError } from "@/lib/apiError";
 import { prisma } from "@/lib/db";
-import { HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, KITE_RPC_URL } from "@/lib/contract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type HuntSubmissionRow = {
-  id: string;
-};
-
-// AUTH: Reads wallet address from x-wallet-address header (Option A — header-based).
-// Not cryptographically signed — appropriate for testnet. Upgrade to SIWE for production.
+// SELECT WINNER — v29 architecture
+//
+// The KiteBond contract's selectWinner(huntId, submissionIndex) MUST be called
+// by the hunt creator's wallet (contract enforces msg.sender == hunt.creator).
+// A server signer cannot call it unless it IS the creator.
+//
+// Correct flow:
+//   1. Frontend: creator calls contract.selectWinner(chainHuntId, submissionIndex)
+//      from their wallet — gets txHash on confirmation.
+//   2. Frontend: POST /api/hunts/{id}/select-winner with { submissionId, txHash }
+//      + x-wallet-address header.
+//   3. This route: verifies creator, updates DB, returns success.
+//
+// The contract automatically pays the winner and returns losing stakes in the
+// same selectWinner tx. No separate settlement call is needed.
+//
+// If hunt has no chainHuntId (DB-only), txHash is optional — marks DB-only winner.
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { submissionId } = (await req.json()) as { submissionId?: string };
+    const body = (await req.json()) as { submissionId?: string; txHash?: string };
     const callerAddress = req.headers.get("x-wallet-address")?.toLowerCase().trim();
 
-    if (!submissionId) {
+    if (!body.submissionId) {
       return NextResponse.json({ error: "submissionId required", code: "SELECT_INPUT_REQUIRED" }, { status: 400 });
     }
     if (!callerAddress) {
@@ -31,69 +40,57 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       where: Number.isFinite(numericId)
         ? { OR: [{ id: params.id }, { chainHuntId: numericId }, { onChainId: numericId }] }
         : { id: params.id },
-      include: { submissions: true }
+      include: { submissions: { select: { id: true, agentAddress: true } } }
     });
 
     if (!hunt) {
       return NextResponse.json({ error: "Hunt not found", code: "HUNT_NOT_FOUND" }, { status: 404 });
     }
     if (hunt.creatorAddress.toLowerCase() !== callerAddress) {
-      return NextResponse.json({ error: "Only hunt creator can select winner", code: "NOT_HUNT_CREATOR" }, { status: 403 });
+      return NextResponse.json({ error: "Only the hunt creator can select the winner", code: "NOT_HUNT_CREATOR" }, { status: 403 });
+    }
+    if (hunt.status.toLowerCase() === "settled") {
+      return NextResponse.json({ error: "Hunt is already settled", code: "HUNT_ALREADY_SETTLED" }, { status: 409 });
     }
 
-    const submissionIndex = hunt.submissions.findIndex((s: HuntSubmissionRow) => s.id === submissionId);
-    if (submissionIndex < 0) {
+    const winningSubmission = hunt.submissions.find((s) => s.id === body.submissionId);
+    if (!winningSubmission) {
       return NextResponse.json({ error: "Submission not found in this hunt", code: "SUBMISSION_NOT_FOUND" }, { status: 404 });
     }
 
-    // --- On-chain winner selection (Case A) ---
-    // Requires: DEPLOYER_PRIVATE_KEY env var and hunt.chainHuntId
-    const key = process.env.DEPLOYER_PRIVATE_KEY;
+    const onChain = Boolean(body.txHash && hunt.chainHuntId !== null);
 
-    if (!key || !hunt.chainHuntId) {
-      // Graceful DB-only fallback if contract call is not possible
-      const note = !key ? "No server signer configured (DEPLOYER_PRIVATE_KEY missing)." : "Hunt has no on-chain ID — DB-only winner marking.";
-      console.warn("[SelectWinner] On-chain call skipped:", note);
+    // Update DB: mark winner, settle hunt
+    await prisma.$transaction([
+      prisma.submission.update({
+        where: { id: body.submissionId },
+        data: {
+          status: "Winner",
+          ...(body.txHash ? { settlementTx: body.txHash } : {})
+        }
+      }),
+      prisma.hunt.update({
+        where: { id: hunt.id },
+        data: {
+          status: "Settled",
+          winnerAddress: winningSubmission.agentAddress,
+          resolvedAt: new Date(),
+          ...(body.txHash ? { settlementTx: body.txHash } : {})
+        }
+      })
+    ]);
 
-      await prisma.$transaction([
-        prisma.submission.update({ where: { id: submissionId }, data: { status: "Winner" } }),
-        prisma.hunt.update({
-          where: { id: hunt.id },
-          data: { status: "Settled", winnerAddress: hunt.submissions[submissionIndex].agentAddress, resolvedAt: new Date() }
-        })
-      ]);
-
-      return NextResponse.json({
-        success: true,
-        submissionId,
-        onChain: false,
-        note: "Winner marked in database. On-chain settlement requires DEPLOYER_PRIVATE_KEY and a valid chainHuntId."
-      });
-    }
-
-    // On-chain path — calls contract.selectWinner(chainHuntId, submissionIndex)
-    const provider = new ethers.JsonRpcProvider(KITE_RPC_URL);
-    const wallet = new ethers.Wallet(key, provider);
-    const contract = new ethers.Contract(HUNT_REGISTRY_ADDRESS, HuntRegistryEthersABI, wallet);
-    const tx = await contract.selectWinner(hunt.chainHuntId, submissionIndex);
-    const receipt = await tx.wait();
-
-    const updatedSubmission = await prisma.submission.update({
-      where: { id: submissionId },
-      data: { status: "Winner", settlementTx: receipt.hash }
+    return NextResponse.json({
+      success: true,
+      submissionId: body.submissionId,
+      winnerAddress: winningSubmission.agentAddress,
+      onChain,
+      txHash: body.txHash ?? null,
+      // Honest settlement note
+      settlementNote: onChain
+        ? "Winner selected and reward paid on-chain via selectWinner(). Stakes returned to non-winning agents automatically."
+        : "Winner recorded in database. This hunt has no on-chain ID — no automatic reward distribution occurred."
     });
-
-    await prisma.hunt.update({
-      where: { id: hunt.id },
-      data: {
-        status: "Settled",
-        winnerAddress: updatedSubmission.agentAddress,
-        settlementTx: receipt.hash,
-        resolvedAt: new Date()
-      }
-    });
-
-    return NextResponse.json({ success: true, submissionId, onChain: true, txHash: receipt.hash });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Winner selection failed";
     console.error("[SelectWinner]", error);

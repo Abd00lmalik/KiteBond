@@ -73,6 +73,19 @@ model Hunt {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   submissions    Submission[]
+  agentJoins     AgentJoin[]
+}
+
+// Records on-chain stakeAndJoin events for DB-level stake verification
+model AgentJoin {
+  id           String   @id @default(cuid())
+  huntId       String
+  hunt         Hunt     @relation(fields: [huntId], references: [id])
+  agentAddress String
+  txHash       String?
+  stakedAmount String?
+  createdAt    DateTime @default(now())
+  @@unique([huntId, agentAddress])
 }
 
 model Submission {

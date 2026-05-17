@@ -14,6 +14,7 @@ import {
   getPaymentTokenAddress,
   getProtocolTreasuryAddress,
   getScanPaymentsAddress,
+  tryGetHuntRegistryAddress,
   tryGetScanPaymentsAddress
 } from "@/lib/contractConfig";
 
@@ -291,5 +292,30 @@ export function useUsedFreeScan(address?: `0x${string}`) {
     functionName: "usedFreeScan",
     args: address ? [address] : undefined,
     query: { enabled: Boolean(address && scanPaymentsAddress) }
+  });
+}
+
+// Reads hasStaked(huntId, agentAddress) from the KiteBond contract.
+// Returns true if the agent has already called stakeAndJoin for this hunt.
+export function useHasStaked({
+  chainHuntId,
+  agentAddress
+}: {
+  chainHuntId?: number | null;
+  agentAddress?: string | null;
+}) {
+  const huntRegistryAddress = tryGetHuntRegistryAddress();
+  const enabled = Boolean(
+    huntRegistryAddress &&
+    chainHuntId !== null &&
+    chainHuntId !== undefined &&
+    agentAddress
+  );
+  return useReadContract({
+    address: (huntRegistryAddress || zeroAddress) as `0x${string}`,
+    abi: HuntRegistryABI,
+    functionName: "hasStaked",
+    args: enabled ? [BigInt(chainHuntId!), agentAddress as `0x${string}`] : undefined,
+    query: { enabled }
   });
 }

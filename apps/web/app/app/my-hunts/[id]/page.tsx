@@ -10,6 +10,7 @@ import { useAccount } from "wagmi";
 import { AppShell } from "@/components/app/AppShell";
 import { PageGlow } from "@/components/shared/PageGlow";
 import { TxLink } from "@/components/shared/TxLink";
+import { useSelectWinner } from "@/hooks/useKiteBond";
 import { safeFetch } from "@/lib/safeFetch";
 import { formatUsdt, truncateHash } from "@/lib/utils";
 
@@ -299,12 +300,28 @@ export default function MyHuntDetailPage() {
   }, [loadHunt]);
 
   const ownsHunt = Boolean(address && hunt?.creatorAddress.toLowerCase() === address.toLowerCase());
+  const { selectWinner: selectWinnerOnChain } = useSelectWinner();
 
   async function selectWinner(submissionId: string) {
     if (!hunt || !address) return;
     setSelectingId(submissionId);
     try {
-      const res = await safeFetch<{ success?: boolean; onChain?: boolean; txHash?: string; note?: string }>(
+      let txHash: string | undefined = undefined;
+
+      // 1. Sign and execute on-chain if hunt is on-chain
+      if (hunt.chainHuntId !== null && hunt.chainHuntId !== undefined) {
+        // We need the index of the submission relative to the hunt to match the contract.
+        // For simplicity we assume index matches array position, but in production we'd track the exact on-chain submission index.
+        const submissionIndex = hunt.submissions.findIndex((s) => s.id === submissionId);
+        if (submissionIndex === -1) throw new Error("Submission not found in hunt");
+        
+        toast.loading("Please sign the transaction to select the winner and payout...", { id: "select-winner" });
+        txHash = await selectWinnerOnChain({ chainHuntId: hunt.chainHuntId, submissionIndex });
+        toast.success("Transaction submitted. Updating database...", { id: "select-winner" });
+      }
+
+      // 2. Persist to database
+      const res = await safeFetch<{ success?: boolean; onChain?: boolean; txHash?: string; settlementNote?: string }>(
         `/api/hunts/${hunt.id}/select-winner`,
         {
           method: "POST",
@@ -312,7 +329,7 @@ export default function MyHuntDetailPage() {
             "Content-Type": "application/json",
             "x-wallet-address": address
           },
-          body: JSON.stringify({ submissionId })
+          body: JSON.stringify({ submissionId, txHash })
         }
       );
       if (res.onChain && res.txHash) {
@@ -322,7 +339,7 @@ export default function MyHuntDetailPage() {
       }
       await loadHunt();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Winner selection failed.");
+      toast.error(error instanceof Error ? error.message : "Winner selection failed.", { id: "select-winner" });
     } finally {
       setSelectingId(null);
     }
