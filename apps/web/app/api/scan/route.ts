@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   }
 
   let isFreeInstantScan = true;
-  let requiredPayment = 1_000_000;
+  let requiredPayment = 1;
 
   try {
     const usage = await prisma.userUsage.findUnique({ where: { walletAddress: address } });
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[Scan][Auth] userUsage lookup failed (non-fatal):", detail);
   }
-  requiredPayment = isFreeInstantScan ? 0 : 1_000_000;
+  requiredPayment = isFreeInstantScan ? 0 : 1;
 
   if (requiredPayment > 0 && !body.paymentTxHash) {
     return stageError(

@@ -5,6 +5,7 @@ import { isAddress, parseEventLogs, parseUnits, zeroAddress } from "viem";
 import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import {
   ERC20ABI,
+  ERC20_TRANSFER_ABI,
   HuntRegistryABI,
   ScanPaymentsABI
 } from "@/lib/contract";
@@ -22,6 +23,8 @@ const depthToEnum: Record<ScanDepth, number> = {
   instant: 0,
   deep: 2
 };
+
+const SCAN_FEE_UNITS = parseUnits("1", 18);
 
 export function useApproveToken() {
   const { writeContractAsync, isPending } = useWriteContract();
@@ -93,9 +96,9 @@ export function useTransferScanFee() {
       }
       const hash = await writeContractAsync({
         address: getPaymentTokenAddress(),
-        abi: ERC20ABI,
+        abi: ERC20_TRANSFER_ABI,
         functionName: "transfer",
-        args: [treasury, 1_000_000n]
+        args: [treasury, SCAN_FEE_UNITS]
       });
       await publicClient.waitForTransactionReceipt({ hash });
       return hash;

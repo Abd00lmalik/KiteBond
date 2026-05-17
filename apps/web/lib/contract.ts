@@ -15,6 +15,19 @@ const huntAbiSource = extractAbi(HuntRegistryJson);
 const scanAbiSource = extractAbi(ScanPaymentsJson);
 const erc20AbiSource = extractAbi(ERC20ABIJson);
 
+export const ERC20_TRANSFER_ABI = [
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "recipient", type: "address" },
+      { name: "amount", type: "uint256" }
+    ],
+    outputs: [{ name: "", type: "bool" }]
+  }
+] as const;
+
 export const KITE_CHAIN_ID = 2368;
 export const KITE_RPC_URL = CONTRACT_CONFIG.rpcUrl;
 export const KITE_EXPLORER = CONTRACT_CONFIG.explorerUrl;

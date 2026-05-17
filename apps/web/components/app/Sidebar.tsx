@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Archive, FileSearch, Home, ListChecks, Radar, ScrollText, UserRound } from "lucide-react";
-import { KiteBondMark, KiteBondWordmark } from "@/components/KiteBondLogo";
+import { KiteBondWordmark } from "@/components/brand/KiteBondLogo";
 import { WalletPanel } from "./WalletPanel";
 
 const nav = [
@@ -22,9 +22,6 @@ export function Sidebar() {
   return (
     <div className="sidebar flex h-full w-full shrink-0 flex-col p-4">
       <Link href="/" className="mb-8 flex items-center gap-2 text-xl font-semibold">
-        <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)]">
-          <KiteBondMark />
-        </span>
         <KiteBondWordmark />
       </Link>
       <nav className="space-y-1">

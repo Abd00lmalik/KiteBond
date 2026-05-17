@@ -22,6 +22,7 @@ import { GlitchHeadline } from "@/components/landing/GlitchHeadline";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Container } from "@/components/shared/Container";
 import { Card } from "@/components/shared/Card";
+import { KiteBondWordmark } from "@/components/brand/KiteBondLogo";
 import { VIEWPORT, revealScaleCyber, revealUpCyber, staggerContainer } from "@/lib/motion";
 
 const heroLines = [
@@ -95,10 +96,7 @@ function Nav() {
     >
       <Container className="flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-3 font-semibold">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-orange)] bg-[var(--orange-dim)] text-[var(--orange)]">
-            KB
-          </span>
-          KiteBond
+          <KiteBondWordmark />
         </Link>
         <div className="hidden items-center gap-6 text-sm text-[var(--text-secondary)] md:flex">
           <Link href="#how-it-works" className="hover:text-[var(--text-primary)]">How It Works</Link>

@@ -41,6 +41,7 @@ export async function GET() {
       pricing: {
         instantFirstScan: "0",
         instantScan: "1000000000000000000",
+        instantScanDecimals: 18,
         deepScan: "3000000000000000000"
       },
       skillDoc: "/skill.md",
