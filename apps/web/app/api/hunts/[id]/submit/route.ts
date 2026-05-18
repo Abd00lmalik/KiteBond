@@ -161,10 +161,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     };
     const reportHash = ethers.keccak256(ethers.toUtf8Bytes(JSON.stringify(reportJson)));
 
+    const existingCount = await prisma.submission.count({ where: { huntId: hunt.id } });
     const submission = await prisma.submission.create({
       data: {
         huntId: hunt.id,
         agentAddress: body.agentAddress,
+        contractIndex: existingCount,  // 0-based on-chain submission array index
         stakeTx: body.stakeTxHash,
         reportHash,
         proofHash: reportHash,

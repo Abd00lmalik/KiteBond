@@ -275,6 +275,9 @@ export default function MyHuntDetailPage() {
   const [hunt, setHunt] = useState<Hunt | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectingId, setSelectingId] = useState<string | null>(null);
+  const [settlementError, setSettlementError] = useState<string | null>(null);
+  const [retryTxHash, setRetryTxHash] = useState<string | null>(null);
+  const [showRetry, setShowRetry] = useState(false);
 
   // Creator fetch — sends x-wallet-address to get full submission data
   const loadHunt = useCallback(async () => {
@@ -302,40 +305,62 @@ export default function MyHuntDetailPage() {
   const ownsHunt = Boolean(address && hunt?.creatorAddress.toLowerCase() === address.toLowerCase());
   const { selectWinner: selectWinnerOnChain } = useSelectWinner();
 
-  async function selectWinner(submissionId: string) {
+  async function selectWinner(submissionId: string, txHashOverride?: string) {
     if (!hunt || !address) return;
     setSelectingId(submissionId);
+    setSettlementError(null);
+    setShowRetry(false);
     try {
-      let txHash: string | undefined = undefined;
+      let txHash: string | undefined = txHashOverride;
 
-      // 1. Sign and execute on-chain if hunt is on-chain
-      if (hunt.chainHuntId !== null && hunt.chainHuntId !== undefined) {
-        // We need the index of the submission relative to the hunt to match the contract.
-        // For simplicity we assume index matches array position, but in production we'd track the exact on-chain submission index.
+      // 1. Sign and execute on-chain if hunt is on-chain (skip if retrying with existing hash)
+      if (!txHash && hunt.chainHuntId !== null && hunt.chainHuntId !== undefined) {
         const submissionIndex = hunt.submissions.findIndex((s) => s.id === submissionId);
         if (submissionIndex === -1) throw new Error("Submission not found in hunt");
         
         toast.loading("Please sign the transaction to select the winner and payout...", { id: "select-winner" });
         txHash = await selectWinnerOnChain({ chainHuntId: hunt.chainHuntId, submissionIndex });
-        toast.success("Transaction submitted. Updating database...", { id: "select-winner" });
+        toast.success("Transaction confirmed. Syncing database...", { id: "select-winner" });
       }
 
       // 2. Persist to database
-      const res = await safeFetch<{ success?: boolean; onChain?: boolean; txHash?: string; settlementNote?: string }>(
-        `/api/hunts/${hunt.id}/select-winner`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-wallet-address": address
-          },
-          body: JSON.stringify({ submissionId, txHash })
+      const res = await fetch(`/api/hunts/${hunt.id}/select-winner`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": address
+        },
+        body: JSON.stringify({ submissionId, txHash, creatorAddress: address })
+      });
+
+      const data = await res.json() as {
+        success?: boolean;
+        onChain?: boolean;
+        txHash?: string;
+        settlementNote?: string;
+        message?: string;
+        reason?: string;
+        error?: string;
+        alreadySettled?: boolean;
+      };
+
+      if (!res.ok) {
+        const msg = data.message ?? data.error ?? "Winner selection could not be verified.";
+        setSettlementError(msg);
+        if (data.reason === "receipt_not_found" && txHash) {
+          setRetryTxHash(txHash);
+          setShowRetry(true);
         }
-      );
-      if (res.onChain && res.txHash) {
-        toast.success(`Winner selected. On-chain tx: ${truncateHash(res.txHash, 8, 6)}`);
+        toast.error(msg, { id: "select-winner" });
+        return;
+      }
+
+      if (data.onChain && data.txHash) {
+        toast.success(`Winner selected on-chain. Tx: ${truncateHash(data.txHash, 8, 6)}`, { id: "select-winner" });
+      } else if (data.alreadySettled) {
+        toast.success("Hunt was already settled.", { id: "select-winner" });
       } else {
-        toast.success("Winner marked in database.");
+        toast.success("Winner marked in database.", { id: "select-winner" });
       }
       await loadHunt();
     } catch (error) {
@@ -431,6 +456,27 @@ export default function MyHuntDetailPage() {
               Winner has been recorded in the database. On-chain reward distribution is handled separately via the KiteBond contract.
               Contact the creator to arrange reward transfer if not yet settled on-chain.
             </p>
+          )}
+        </div>
+      )}
+
+      {/* Settlement verification error + retry */}
+      {settlementError && (
+        <div className="rounded-[var(--radius-md)] border border-[var(--amber)] bg-[var(--amber-ghost,rgba(245,158,11,0.08))] p-4 text-sm">
+          <p className="font-semibold text-[var(--amber)]">⚠ Settlement Sync Failed</p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">{settlementError}</p>
+          {showRetry && retryTxHash && (
+            <button
+              type="button"
+              onClick={() => {
+                const lastSelectingId = selectingId ?? hunt?.submissions[0]?.id;
+                if (lastSelectingId) void selectWinner(lastSelectingId, retryTxHash);
+              }}
+              className="mt-3 inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--amber)] px-4 py-2 text-xs font-semibold text-[var(--amber)] transition hover:bg-[rgba(245,158,11,0.1)]"
+            >
+              <Loader2 className="h-3 w-3" />
+              Retry Settlement Sync
+            </button>
           )}
         </div>
       )}

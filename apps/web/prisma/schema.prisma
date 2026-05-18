@@ -95,6 +95,7 @@ model Submission {
   huntId           String
   hunt             Hunt     @relation(fields: [huntId], references: [id])
   agentAddress     String
+  contractIndex    Int?     // 0-based on-chain submission array index
   stakeTx          String?
   reportHash       String?
   reportJson       Json?
